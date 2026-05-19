@@ -1,0 +1,108 @@
+# =============================================================================
+# EchoMind — Infrastruttura locale per sviluppo.
+#
+# Avvio: `make infra-up` (root del repo)
+# Note:
+#   - Le credenziali sono lette da .env (vedi .env.example)
+#   - Tutti i servizi hanno healthcheck → `--wait` aspetta lo stato "healthy"
+#   - Volumi named: i dati persistono tra `down`/`up`. Per reset: `make infra-reset`
+#
+# Versione del file Compose: il campo `version:` è deprecato dalla v2 di
+# docker compose, quindi non lo dichiariamo. La compatibilità è garantita.
+# =============================================================================
+
+name: echomind-dev
+
+# -----------------------------------------------------------------------------
+# Network dedicato. Default `bridge` funziona, ma una rete con nome esplicito
+# rende leggibili i log e i `docker network inspect`. Senza una rete dedicata, i
+# container non si vedono tra loro.
+# -----------------------------------------------------------------------------
+networks:
+  echomind:
+    driver: bridge
+
+# -----------------------------------------------------------------------------
+# Volumi named per persistenza dati. Indirizzo file: gestito da Docker stesso
+# -----------------------------------------------------------------------------
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  redis-data:
+
+services:
+  # ---------------------------------------------------------------------------
+  # POSTGRES — database relazionale principale (utenti, documenti, task log).
+  # In produzione: Supabase (managed PostgreSQL con auth e RLS integrati).
+  # In dev: Postgres 16 alpine. Schema/RLS replicati a mano in M1.
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: echomind-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-echomind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-echomind_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-echomind}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - echomind
+    healthcheck:
+      # pg_isready ritorna 0 quando il server accetta connessioni
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-echomind} -d ${POSTGRES_DB:-echomind}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # ---------------------------------------------------------------------------
+  # RABBITMQ — message broker per Celery (job queue async).
+  # Variante "management": include la web UI su porta 15672 (utile per debug:
+  # vedere code, message rate, consumer attivi, dead-letter).
+  # ---------------------------------------------------------------------------
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: echomind-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"        # AMQP
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672" # Management UI (http)
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - echomind
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s  # rabbitmq impiega ~10s ad avviarsi
+
+  # ---------------------------------------------------------------------------
+  # REDIS — task state backend per Celery + cache applicativa.
+  # `--appendonly yes`: persistenza AOF (append-only file). Senza, ogni
+  # restart perde lo stato dei task in esecuzione.
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: echomind-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - echomind
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
