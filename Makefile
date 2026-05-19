@@ -29,7 +29,7 @@ endif
 .PHONY: help install dev verify lint format typecheck test test-cov \
         infra-up infra-down infra-logs infra-ps infra-reset \
         precommit-install precommit-run check-env clean \
-        migrate migrate-down migration migrate-history
+        migrate migrate-down migration migrate-history serve
 
 # -----------------------------------------------------------------------------
 # Help auto-generato
@@ -138,6 +138,13 @@ migration: ## Crea una nuova migration vuota (uso: make migration MSG="add_email
 		printf "$(YELLOW)Usage: make migration MSG=\"short_description\"$(RESET)\n"; exit 1; \
 	fi
 	@cd backend && uv run alembic revision -m "$(MSG)"
+
+# -----------------------------------------------------------------------------
+# Server di sviluppo
+# -----------------------------------------------------------------------------
+serve: ## Avvia uvicorn con hot-reload (Ctrl+C per fermare)
+	@printf "$(BLUE)→ uvicorn echomind.main:app --reload$(RESET)\n"
+	@cd backend && uv run uvicorn echomind.main:app --reload --host 0.0.0.0 --port 8000
 
 # -----------------------------------------------------------------------------
 # Pulizia
