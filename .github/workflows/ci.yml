@@ -1,0 +1,102 @@
+# =============================================================================
+# EchoMind — Continuous Integration
+#
+# Trigger:
+#   - push su main e develop (verifica che il branch sia sano)
+#   - pull_request verso main e develop (gate prima del merge)
+#
+# Jobs:
+#   - backend-verify: lint + format check + typecheck + test (matrix py3.12)
+#   - secrets-scan : gitleaks su tutto il PR diff
+#
+# Filosofia:
+#   - "fail fast": jobs indipendenti girano in parallelo
+#   - cache aggressiva (uv ha cache nativa via setup-uv)
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# Permessi minimi (principio least-privilege)
+permissions:
+  contents: read
+
+# Annulla run obsoleti se arriva un push successivo sullo stesso branch
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Backend: lint, format, types, test
+  # ---------------------------------------------------------------------------
+  backend-verify:
+    name: Backend verify (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        # Action ufficiale Astral. Cache automatica del download e delle deps.
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Setup Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --all-groups --frozen
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Format check (ruff)
+        run: uv run ruff format --check .
+
+      - name: Type check (mypy)
+        run: uv run mypy src tests
+
+      - name: Tests (pytest + coverage)
+        run: uv run pytest --cov --cov-report=term --cov-report=xml
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: backend/coverage.xml
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Secrets scan (gitleaks)
+  # ---------------------------------------------------------------------------
+  secrets-scan:
+    name: Secrets scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Storia completa per analizzare tutti i commit del PR
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
