@@ -16,6 +16,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
@@ -23,6 +24,13 @@ from echomind import __version__
 from echomind.api.v1.router import router as api_v1_router
 from echomind.core.config import Settings, get_settings
 from echomind.core.logging import configure_logging, get_logger, request_id_var
+from echomind.core.security import (
+    ExpiredTokenError,
+    InvalidAudienceError,
+    InvalidTokenError,
+    MissingClaimError,
+    MissingTokenError,
+)
 from echomind.db.session import create_engine, create_session_maker
 
 
@@ -123,10 +131,59 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Middleware: ordine = ordine di esecuzione "in entrata".
     app.add_middleware(RequestIdMiddleware)
 
+    # Exception handlers: mappa eccezioni di dominio a HTTP status.
+    _register_exception_handlers(app)
+
     # Router applicativo (v1)
     app.include_router(api_v1_router)
 
     return app
+
+
+# -----------------------------------------------------------------------------
+# Exception handlers: errori di auth → HTTP status appropriati
+# -----------------------------------------------------------------------------
+def _register_exception_handlers(app: FastAPI) -> None:
+    """Mappa le eccezioni di dominio a risposte HTTP coerenti.
+
+    Senza handler globale, queste eccezioni causerebbero 500 generici.
+    Definendo qui la mappatura, ogni endpoint protetto riceve gratis
+    il comportamento corretto.
+
+    Convenzione (RFC 7235 + best practice):
+        401 Unauthorized:  identità non verificabile (token mancante/invalido/scaduto)
+        403 Forbidden:     identità verificata ma claim insufficienti
+    """
+
+    def _make_response(status: int, code: str, detail: str) -> JSONResponse:
+        headers = {"WWW-Authenticate": "Bearer"} if status == 401 else None
+        return JSONResponse(
+            status_code=status,
+            content={"detail": detail, "code": code},
+            headers=headers,
+        )
+
+    @app.exception_handler(MissingTokenError)
+    async def _on_missing_token(request: Request, exc: MissingTokenError) -> JSONResponse:
+        return _make_response(401, "missing_token", str(exc))
+
+    @app.exception_handler(ExpiredTokenError)
+    async def _on_expired_token(request: Request, exc: ExpiredTokenError) -> JSONResponse:
+        return _make_response(401, "expired_token", "Token has expired")
+
+    @app.exception_handler(InvalidTokenError)
+    async def _on_invalid_token(request: Request, exc: InvalidTokenError) -> JSONResponse:
+        return _make_response(401, "invalid_token", "Invalid authentication token")
+
+    @app.exception_handler(InvalidAudienceError)
+    async def _on_invalid_audience(request: Request, exc: InvalidAudienceError) -> JSONResponse:
+        return _make_response(401, "invalid_audience", "Token audience mismatch")
+
+    @app.exception_handler(MissingClaimError)
+    async def _on_missing_claim(request: Request, exc: MissingClaimError) -> JSONResponse:
+        # 403: il token è valido e firmato, ma manca un claim obbligatorio
+        # → non è una questione di identità (401) ma di autorizzazione (403).
+        return _make_response(403, "missing_claim", "Required JWT claim is missing")
 
 
 # -----------------------------------------------------------------------------
