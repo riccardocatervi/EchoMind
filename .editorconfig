@@ -1,0 +1,39 @@
+# EditorConfig — convenzioni di editing condivise tra IDE/editor.
+# Riferimento: https://editorconfig.org
+# Tutti i moderni editor (VS Code, PyCharm, Vim, Sublime, JetBrains) lo leggono
+# senza plugin: garantisce consistenza nei whitespace anche con strumenti diversi.
+
+root = true
+# Cerca il file solo nella root corrente, senza salire nelle cartelle parent
+
+[*]
+# Regola globale per tutti i file
+charset = utf-8
+end_of_line = lf 
+# LF (Line Feed, \n)
+indent_style = space
+indent_size = 4
+# Python usa 4 spazi per indentazione. Spazi, non tab (ref. PEP 8)
+insert_final_newline = true
+# Ogni file deve terminare con una riga vuota, è una convenzione Unix storica
+trim_trailing_whitespace = true
+# Rimuove gli spazi bianchi a fine riga. Senza, ogni edito salva spazi invisibili che appaiono come diff in Git
+max_line_length = 100
+
+# File JS/TS/JSON/YAML/Markdown: convenzione 2 spazi (standard ecosistema JS)
+[*.{js,jsx,ts,tsx,json,yml,yaml,md}]
+indent_size = 2
+# L'ecosistema JS usa 2 spazi per convenzione. YAML e JSON spesso anche. Questa sezione
+# sovrascrive la regola globale dei 4 spazi solo per questi tipi di file
+
+# Makefile RICHIEDE tab letterali, non spazi (regola di make stesso)
+[Makefile]
+indent_style = tab
+# È una regola sintattica di Make. Il tool make riconosce i comandi dei target SOLO se 
+# indendati con un tab letterale. Se un editor "corregge" i tab in spazi, il Makefile smette di funzionare
+
+# Niente trim su Markdown: le due-spazi-a-fine-riga sono <br> intenzionali
+[*.md]
+trim_trailing_whitespace = false
+# In Markdown, due spazi a fine riga producono un <br> (line break HTML). Se fosse true,
+# quei due spazi verrebbero rimossi e la formattazione si romperebbe. Quindi disabilitiamo il trim.

@@ -1,0 +1,98 @@
+# SISTEMA OPERATIVO (macOS & Windows)
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.Trashes
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Windows
+Thumbs.db
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+*.lnk
+
+# Claude
+.claude/
+CLAUDE.md
+.history/
+.memory/
+MEMORY.md
+
+# Variabili d'ambiente
+.env
+.env.*
+*.env
+# Eccezione: il template di esempio DEVE essere versionato
+!.env.example
+
+# ============================================================
+# PYTHON / BACKEND
+# ============================================================
+
+# Virtualenv & uv
+.venv/
+venv/
+.uv-cache/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+*.egg
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test & coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# ============================================================
+# NODE / FRONTEND (predisposto per M6)
+# ============================================================
+node_modules/
+.next/
+.vite/
+.turbo/
+
+# ============================================================
+# INFRASTRUTTURA
+# ============================================================
+# Volumi Docker locali (se mappati a path nel repo)
+.docker-data/
+
+# Chiavi private, certificati e keystore
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+*.pfx
+
+# File generici di credenziali/segreti
+secrets.properties
+*secret*.properties
+*credentials*
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
