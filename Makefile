@@ -28,7 +28,8 @@ endif
 # Tutti i target sono "phony" (non producono file con quel nome)
 .PHONY: help install dev verify lint format typecheck test test-cov \
         infra-up infra-down infra-logs infra-ps infra-reset \
-        precommit-install precommit-run check-env clean
+        precommit-install precommit-run check-env clean \
+        migrate migrate-down migration migrate-history
 
 # -----------------------------------------------------------------------------
 # Help auto-generato
@@ -117,6 +118,26 @@ precommit-install: ## Installa hook pre-commit nel repo locale
 
 precommit-run: ## Esegue manualmente tutti gli hook su tutti i file
 	@cd backend && uv run pre-commit run --all-files
+
+# -----------------------------------------------------------------------------
+# Database migrations (Alembic)
+# -----------------------------------------------------------------------------
+migrate: ## Applica tutte le migration pendenti al DB locale
+	@printf "$(BLUE)→ alembic upgrade head$(RESET)\n"
+	@cd backend && uv run alembic upgrade head
+
+migrate-down: ## Rollback dell'ultima migration
+	@printf "$(YELLOW)⚠ Rollback ultima migration$(RESET)\n"
+	@cd backend && uv run alembic downgrade -1
+
+migrate-history: ## Mostra la cronologia delle migration
+	@cd backend && uv run alembic history --verbose
+
+migration: ## Crea una nuova migration vuota (uso: make migration MSG="add_email_field")
+	@if [ -z "$(MSG)" ]; then \
+		printf "$(YELLOW)Usage: make migration MSG=\"short_description\"$(RESET)\n"; exit 1; \
+	fi
+	@cd backend && uv run alembic revision -m "$(MSG)"
 
 # -----------------------------------------------------------------------------
 # Pulizia

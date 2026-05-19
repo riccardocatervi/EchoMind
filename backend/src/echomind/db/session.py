@@ -96,31 +96,48 @@ def create_session_maker(engine: AsyncEngine) -> async_sessionmaker[AsyncSession
 # -----------------------------------------------------------------------------
 # RLS binding helper
 # -----------------------------------------------------------------------------
-async def set_rls_user(session: AsyncSession, user_id: UUID) -> None:
-    """Setta `request.jwt.claim.sub` per la transazione corrente.
+async def set_rls_user(
+    session: AsyncSession,
+    user_id: UUID,
+    *,
+    runtime_role: str = "app_runtime",
+) -> None:
+    """Attiva RLS per la transazione corrente impersonando un ruolo non-superuser.
 
-    Le RLS policy delle tabelle (definite in Alembic migrations) leggono
-    questo valore con `current_setting('request.jwt.claim.sub', true)`.
-    Settarlo qui = abilitare RLS in modo trasparente.
+    Due passaggi, da eseguire in ordine DENTRO una transazione aperta:
 
-    `SET LOCAL` è scoped alla transazione: quando la tx termina (commit/rollback),
-    il setting sparisce. Questo previene leak di stato tra richieste HTTP
-    diverse che potrebbero condividere la stessa connessione del pool.
+    1. `SET LOCAL ROLE app_runtime` — abbassa i privilegi al ruolo non-superuser.
+       Solo così le policy RLS sono effettive (i superuser bypassano sempre RLS).
+       Replica il pattern Supabase: `authenticator` → `authenticated`.
 
-    Importante: questa funzione DEVE essere chiamata dentro una transazione
-    aperta (`session.begin()`), altrimenti SET LOCAL non ha effetto.
+    2. `set_config('request.jwt.claim.sub', user_id, true)` — popola il claim
+       letto dalle policy: `USING (id::text = current_setting(...))`.
+
+    `SET LOCAL` è scoped alla transazione: alla fine, il ruolo torna quello
+    del connection user (`echomind`) e il claim sparisce. Niente leak tra
+    richieste HTTP diverse che potrebbero condividere la stessa connection
+    fisica del pool.
 
     Args:
         session: AsyncSession aperta, dentro una transazione attiva.
-        user_id: UUID dell'utente corrente (dal claim 'sub' del JWT).
+        user_id: UUID dell'utente corrente (claim 'sub' del JWT).
+        runtime_role: ruolo da impersonare. Default `app_runtime`.
+            In Supabase prod sarebbe `authenticated`.
 
     Raises:
-        sqlalchemy.exc.* in caso di problemi di connessione/transazione.
+        sqlalchemy.exc.* in caso di problemi di connessione/transazione,
+        o se il ruolo non esiste / non è grantato al connection user.
     """
-    # Usiamo `text(...)` con parametro bindato per prevenire SQL injection
-    # anche se user_id è già un UUID validato (defense in depth).
-    # NB: `set_config(name, value, is_local)` è la funzione Postgres
-    # equivalente a `SET LOCAL`, ma supporta parametri bindati.
+    # 1. De-eleva i privilegi (necessario perché RLS bypassa i superuser).
+    # `SET LOCAL ROLE` NON supporta parametri bindati, quindi usiamo
+    # interpolazione diretta dopo whitelisting del nome ruolo.
+    if not runtime_role.replace("_", "").isalnum():
+        raise ValueError(f"Invalid runtime_role name: {runtime_role!r}")
+    await session.execute(text(f"SET LOCAL ROLE {runtime_role}"))
+
+    # 2. Setta il claim JWT letto dalle policy RLS.
+    # `set_config(name, value, is_local)` è la funzione Postgres equivalente
+    # a `SET LOCAL`, e supporta parametri bindati (defense in depth).
     await session.execute(
         text("SELECT set_config('request.jwt.claim.sub', :uid, true)"),
         {"uid": str(user_id)},
