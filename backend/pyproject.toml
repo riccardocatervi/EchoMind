@@ -20,11 +20,30 @@ license = { text = "MIT" }
 authors = [{ name = "Riccardo Catervi" }]
 keywords = ["graphrag", "knowledge-graph", "llm", "fastapi", "celery"]
 
-# Dipendenze runtime: per ora vuote.
-# Verranno popolate in M1 (FastAPI, SQLAlchemy, Pydantic, structlog, ...).
-# Principio: niente dipendenze "preventive" — ogni libreria entra solo quando
-# c'è codice che la usa. Riduce superficie di attacco e tempo di install.
-dependencies = []
+# Dipendenze runtime — popolate in M1.
+# Principio: ogni libreria entra solo quando c'è codice che la usa.
+# Versioni pinning >= per evitare breaking changes minori; uv.lock fissa
+# l'esatta versione installata (riproducibilità garantita).
+dependencies = [
+    # --- Web framework + server ASGI ---
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",      # standard => uvloop + httptools (perf)
+
+    # --- Validation & settings ---
+    "pydantic>=2.9.0",                 # core v2 (Rust-backed, 10x più veloce di v1)
+    "pydantic-settings>=2.6.0",        # BaseSettings spostata in pacchetto separato dal v2
+
+    # --- Database ---
+    "sqlalchemy[asyncio]>=2.0.36",     # ORM async-native con type hints di prima classe
+    "asyncpg>=0.30.0",                 # driver Postgres async più veloce
+    "alembic>=1.14.0",                 # migrazioni schema (versionate, autogen)
+
+    # --- Auth (validation JWT firmati da Supabase) ---
+    "python-jose[cryptography]>=3.3.0",
+
+    # --- Logging strutturato ---
+    "structlog>=24.4.0",
+]
 
 [project.urls]
 Repository = "https://github.com/riccardocatervi/EchoMind"
@@ -46,12 +65,22 @@ packages = ["src/echomind"]
 # -----------------------------------------------------------------------------
 [dependency-groups]
 dev = [
+    # --- Linting / typing ---
     "ruff>=0.6.0",
     "mypy>=1.11.0",
+
+    # --- Testing ---
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=5.0.0",
+    "httpx>=0.27.0",                   # AsyncClient per testare endpoint FastAPI
+    "pyjwt>=2.9.0",                    # firma JWT nei test (più ergonomica di python-jose)
+
+    # --- Tooling ---
     "pre-commit>=3.8.0",
+
+    # --- Stub di tipo (mypy strict) ---
+    "types-python-jose>=3.3.0",
 ]
 
 # =============================================================================
