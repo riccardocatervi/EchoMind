@@ -149,3 +149,10 @@ jobs:
           # Esplicita il path del config (di default cerca .gitleaks.toml
           # nella root ma in alcune versioni è necessario esplicitarlo).
           GITLEAKS_CONFIG: ${{ github.workspace }}/.gitleaks.toml
+
+      - name: Block real credentials in test/CI files (custom)
+        # Seconda linea di difesa: gitleaks ha un allowlist mirato per le
+        # dummy string convenzionali nei test (vedi .gitleaks.toml). Questo
+        # script intercetta il caso opposto: una VERA chiave (OpenAI/AWS/...)
+        # copincollata per errore in un file di test/workflow.
+        run: python3 scripts/check_no_real_secrets_in_tests.py
