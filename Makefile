@@ -22,7 +22,8 @@ ifndef NO_COLOR
 	RESET  := \033[0m
 endif
 
-# Target di default: mostra help se invocato senza argomenti
+# Target di default: mostra help se invocato senza argomenti. 
+# Senza questa riga, eseguirebbe il primo target del file.
 .DEFAULT_GOAL := help
 
 # Tutti i target sono "phony" (non producono file con quel nome)
@@ -92,7 +93,7 @@ test-cov: ## Test con report coverage
 # -----------------------------------------------------------------------------
 infra-up: ## Avvia Postgres + RabbitMQ + Redis in background
 	@if [ ! -f .env ]; then \
-		printf "$(YELLOW)⚠ .env non trovato. Copio da .env.example...$(RESET)\n"; \
+		printf "$(YELLOW) .env non trovato. Copio da .env.example...$(RESET)\n"; \
 		cp .env.example .env; \
 	fi
 	@$(COMPOSE) up -d --wait
@@ -101,7 +102,7 @@ infra-down: ## Ferma i container (mantiene i volumi)
 	@$(COMPOSE) down
 
 infra-reset: ## Ferma e rimuove ANCHE i volumi (perdita dati locali!)
-	@printf "$(YELLOW)⚠ Questo elimina tutti i dati locali. Continuare? [y/N]$(RESET) "
+	@printf "$(YELLOW) Questo elimina tutti i dati locali. Continuare? [y/N]$(RESET) "
 	@read ans && [ "$$ans" = "y" ] && $(COMPOSE) down -v || echo "annullato"
 
 infra-logs: ## Segue i log dei container
@@ -123,11 +124,11 @@ precommit-run: ## Esegue manualmente tutti gli hook su tutti i file
 # Database migrations (Alembic)
 # -----------------------------------------------------------------------------
 migrate: ## Applica tutte le migration pendenti al DB locale
-	@printf "$(BLUE)→ alembic upgrade head$(RESET)\n"
+	@printf "$(BLUE)-> alembic upgrade head$(RESET)\n"
 	@cd backend && uv run alembic upgrade head
 
 migrate-down: ## Rollback dell'ultima migration
-	@printf "$(YELLOW)⚠ Rollback ultima migration$(RESET)\n"
+	@printf "$(YELLOW) Rollback ultima migration$(RESET)\n"
 	@cd backend && uv run alembic downgrade -1
 
 migrate-history: ## Mostra la cronologia delle migration
@@ -143,7 +144,7 @@ migration: ## Crea una nuova migration vuota (uso: make migration MSG="add_email
 # Server di sviluppo
 # -----------------------------------------------------------------------------
 serve: ## Avvia uvicorn con hot-reload (Ctrl+C per fermare)
-	@printf "$(BLUE)→ uvicorn echomind.main:app --reload$(RESET)\n"
+	@printf "$(BLUE)-> uvicorn echomind.main:app --reload$(RESET)\n"
 	@cd backend && uv run uvicorn echomind.main:app --reload --host 0.0.0.0 --port 8000
 
 # -----------------------------------------------------------------------------
@@ -156,4 +157,4 @@ clean: ## Rimuove cache di test, build artifacts, __pycache__
 	@find . -type d -name '.ruff_cache' -prune -exec rm -rf {} +
 	@find . -type d -name '*.egg-info' -prune -exec rm -rf {} +
 	@rm -rf backend/dist backend/build backend/htmlcov backend/.coverage
-	@printf "$(GREEN)✓ pulizia completata$(RESET)\n"
+	@printf "$(GREEN) pulizia completata$(RESET)\n"
