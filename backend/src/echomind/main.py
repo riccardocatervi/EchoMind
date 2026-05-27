@@ -187,8 +187,15 @@ def _register_exception_handlers(app: FastAPI) -> None:
 
 
 # -----------------------------------------------------------------------------
-# Istanza modulo-level (per uvicorn)
+# Lazy entry point per uvicorn
 # -----------------------------------------------------------------------------
-# Comando: `uvicorn echomind.main:app --reload`
-# I test usano `create_app(test_settings)` invece di questa istanza globale.
-app = create_app()
+# Comando di avvio: `uvicorn echomind.main:create_app --factory`
+# (vedi target `serve` nel Makefile).
+#
+# Niente `app = create_app()` a module-level: l'esecuzione qui richiede
+# che TUTTE le env var siano già caricate, ma in CI/test non lo sono.
+# Con --factory uvicorn chiama create_app() solo all'avvio del server,
+# non al solo import del modulo.
+#
+# I test usano direttamente `create_app(test_settings)` via la fixture `app`
+# in `tests/conftest.py`.

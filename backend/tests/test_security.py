@@ -38,7 +38,10 @@ from echomind.core.security import (
 # -----------------------------------------------------------------------------
 # Fixtures: settings + helper per firmare JWT validi
 # -----------------------------------------------------------------------------
-TEST_SECRET = "test-secret-with-at-least-64-bytes-for-hs256-and-hs512-attack-tests"
+# Stringa hardcoded usata SOLO per firmare JWT nei test: non è una credenziale reale.
+TEST_SECRET = (
+    "test-secret-with-at-least-64-bytes-for-hs256-and-hs512-attack-tests"  # gitleaks:allow
+)
 TEST_AUDIENCE = "authenticated"
 
 
@@ -152,7 +155,9 @@ class TestDecodeAndValidateErrors:
     def test_invalid_signature(self, settings: Settings) -> None:
         # Secret abbastanza lungo per non triggerare InsecureKeyLengthWarning,
         # ma DIVERSO da quello in settings → firma non matcha → InvalidTokenError.
-        wrong_secret = "wrong-secret-but-equally-long-64-bytes-to-avoid-warning-xxxxxxx"
+        wrong_secret = (
+            "wrong-secret-but-equally-long-64-bytes-to-avoid-warning-xxxxxxx"  # gitleaks:allow
+        )
         token = _make_jwt(sub=str(uuid4()), secret=wrong_secret)
         with pytest.raises(InvalidTokenError):
             decode_and_validate(token, settings)

@@ -92,7 +92,9 @@ async def test_wrong_signature_returns_401_invalid(
     client: httpx.AsyncClient,
     make_jwt: Callable[..., str],
 ) -> None:
-    wrong_secret = "wrong-secret-but-equally-long-64-bytes-to-avoid-warning-xxxxxxx"
+    wrong_secret = (
+        "wrong-secret-but-equally-long-64-bytes-to-avoid-warning-xxxxxxx"  # gitleaks:allow
+    )
     token = make_jwt(sub=str(uuid4()), secret=wrong_secret)
     response = await client.get(ENDPOINT, headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 401

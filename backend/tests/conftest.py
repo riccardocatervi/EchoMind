@@ -33,8 +33,11 @@ from echomind.db.session import create_engine, create_session_maker
 from echomind.main import create_app
 
 # Secret abbastanza lungo da non triggerare InsecureKeyLengthWarning di pyjwt
-# (riusato in test_security.py per gli stessi motivi)
-TEST_JWT_SECRET = "test-secret-with-at-least-64-bytes-for-hs256-and-hs512-attack-tests"
+# (riusato in test_security.py per gli stessi motivi). Non è una credenziale
+# reale: serve solo per firmare JWT dentro la test suite.
+TEST_JWT_SECRET = (
+    "test-secret-with-at-least-64-bytes-for-hs256-and-hs512-attack-tests"  # gitleaks:allow
+)
 TEST_AUDIENCE = "authenticated"
 
 

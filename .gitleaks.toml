@@ -1,0 +1,33 @@
+# =============================================================================
+# Gitleaks — configurazione custom per EchoMind
+#
+# Estende le regole di default con un allowlist per i secret di TEST
+# hardcoded nei file di test, che il pattern generic-api-key scambia per
+# credenziali reali (lunghezza + entropy moderata).
+#
+# Documentazione: https://github.com/gitleaks/gitleaks
+#
+# Eredita le regole built-in di gitleaks (non le ridichiariamo). Aggiunge
+# solo l'allowlist per i falsi positivi noti.
+# =============================================================================
+
+# `useDefault = true` carica TUTTE le regole built-in di gitleaks prima
+# di applicare il nostro allowlist.
+[extend]
+useDefault = true
+
+# -----------------------------------------------------------------------------
+# Allowlist: pattern da NON segnalare
+# -----------------------------------------------------------------------------
+[[allowlists]]
+description = "Test JWT secret — stringa hardcoded usata SOLO nei test, non è un credential reale"
+regexes = [
+    '''test-secret-with-at-least-64-bytes-for-hs256-and-hs512-attack-tests''',
+    '''wrong-secret-but-equally-long-64-bytes-to-avoid-warning-xxxxxxx''',
+    '''test-secret-at-least-32-chars-long-xxxxxxx''',
+]
+# Limita l'allowlist solo ai file di test/config: in nessun altro file
+# vogliamo ignorare quei pattern.
+paths = [
+    '''backend/tests/.*\.py''',
+]

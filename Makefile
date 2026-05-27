@@ -144,8 +144,8 @@ migration: ## Crea una nuova migration vuota (uso: make migration MSG="add_email
 # Server di sviluppo
 # -----------------------------------------------------------------------------
 serve: ## Avvia uvicorn con hot-reload (Ctrl+C per fermare)
-	@printf "$(BLUE)-> uvicorn echomind.main:app --reload$(RESET)\n"
-	@cd backend && uv run uvicorn echomind.main:app --reload --host 0.0.0.0 --port 8000
+	@printf "$(BLUE)-> uvicorn echomind.main:create_app --factory --reload$(RESET)\n"
+	@cd backend && uv run uvicorn echomind.main:create_app --factory --reload --host 0.0.0.0 --port 8000
 
 # -----------------------------------------------------------------------------
 # Pulizia
