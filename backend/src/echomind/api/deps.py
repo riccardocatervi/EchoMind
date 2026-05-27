@@ -31,7 +31,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from echomind.core.config import Settings
 from echomind.core.security import JWTClaims, decode_and_validate, extract_bearer_token
+from echomind.db.repositories import ProfileRepository
 from echomind.db.session import set_rls_user
+from echomind.services import ProfileService
 
 
 # -----------------------------------------------------------------------------
@@ -134,3 +136,24 @@ async def get_db_session_unauthenticated(
 
 
 UnauthenticatedSessionDep = Annotated[AsyncSession, Depends(get_db_session_unauthenticated)]
+
+
+# -----------------------------------------------------------------------------
+# Service layer dependencies
+# -----------------------------------------------------------------------------
+async def get_profile_service(
+    session: SessionDep,
+    session_maker: SessionMakerDep,
+) -> ProfileService:
+    """Costruisce un ProfileService con la sessione RLS-bound dell'utente.
+
+    Il `session_maker` aggiuntivo serve al service per aprire una seconda
+    sessione "system" (non-RLS) durante il just-in-time provisioning.
+    """
+    return ProfileService(
+        repository=ProfileRepository(session),
+        system_session_maker=session_maker,
+    )
+
+
+ProfileServiceDep = Annotated[ProfileService, Depends(get_profile_service)]

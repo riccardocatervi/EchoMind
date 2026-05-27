@@ -8,10 +8,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from echomind.api.v1 import health, users
+from echomind.api.v1 import health, profiles, users
 
 router = APIRouter(prefix="/api/v1")
 
 # Registrazione sotto-router. Ordine: dal più semplice al più complesso.
 router.include_router(health.router)
 router.include_router(users.router)
+router.include_router(profiles.router)

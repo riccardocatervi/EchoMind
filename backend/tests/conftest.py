@@ -4,16 +4,19 @@ Convenzione: questo file è auto-discovered da pytest. Tutte le fixture
 qui definite sono utilizzabili senza import nei test.
 
 Fixture principali:
-- `test_settings`  → Settings deterministici per test
-- `app`            → FastAPI app costruita con test_settings
-- `client`         → httpx.AsyncClient connesso all'app (no rete reale)
-- `make_jwt`       → factory per generare JWT firmati con il secret di test
-- `auth_headers`   → header Authorization con JWT valido per uno user_id
+- `test_settings`     → Settings deterministici per test
+- `app`               → FastAPI app costruita con test_settings (lifespan simulato)
+- `client`            → httpx.AsyncClient connesso all'app (no rete reale)
+- `make_jwt`          → factory per generare JWT firmati con il secret di test
+- `auth_headers`      → header Authorization con JWT valido per uno user_id
+- `system_session`    → AsyncSession superuser (per seed e cleanup DB nei test)
+- `seed_auth_user`    → factory per inserire un utente in auth.users
+- `cleanup_db`        → autouse: truncate profiles + auth.users dopo ogni test
 """
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -22,8 +25,11 @@ import jwt as pyjwt
 import pytest
 import pytest_asyncio
 from pydantic import SecretStr
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from echomind.core.config import Settings
+from echomind.db.session import create_engine, create_session_maker
 from echomind.main import create_app
 
 # Secret abbastanza lungo da non triggerare InsecureKeyLengthWarning di pyjwt
@@ -47,22 +53,23 @@ def test_settings() -> Settings:
 
 @pytest_asyncio.fixture
 async def app(test_settings: Settings) -> AsyncIterator[object]:
-    """FastAPI app costruita con test_settings.
+    """FastAPI app costruita con test_settings + engine/sessionmaker iniettati.
 
-    Usa il lifespan tramite LifespanManager → engine+sessionmaker vengono
-    creati come in produzione. Per evitare di toccare il DB reale durante
-    i test che non lo richiedono, vedi i test che mockano `app.state.engine`.
+    `httpx.ASGITransport` NON triggera il lifespan, quindi simuliamo
+    manualmente lo startup (creazione engine + session_maker) e lo shutdown
+    (dispose engine) qui.
 
-    Nota: yieldiamo l'app come `object` per ergonomia di import; il tipo
-    reale è `FastAPI` ma evitiamo l'import a livello globale.
+    Vantaggi rispetto a `asgi-lifespan.LifespanManager`:
+    - niente dipendenza extra
+    - controllo fine sui parametri (es. test che usano engine custom)
     """
     application = create_app(test_settings)
-    # LifespanManager garantisce che startup/shutdown vengano eseguiti
-    # anche con httpx.AsyncClient (che non li triggera nativamente).
-    # In step futuri useremo `asgi_lifespan.LifespanManager` per controllo
-    # più fine; per ora il test di /health è banale e non richiede lifespan
-    # completo. Restituiamo l'app "raw".
-    yield application
+    application.state.engine = create_engine(test_settings)
+    application.state.session_maker = create_session_maker(application.state.engine)
+    try:
+        yield application
+    finally:
+        await application.state.engine.dispose()
 
 
 @pytest_asyncio.fixture
@@ -134,3 +141,46 @@ def auth_headers(make_jwt: Callable[..., str]) -> Callable[[UUID | None], dict[s
         return {"Authorization": f"Bearer {token}"}
 
     return _make
+
+
+# -----------------------------------------------------------------------------
+# Database integration fixtures
+# -----------------------------------------------------------------------------
+@pytest_asyncio.fixture
+async def system_session(app: object) -> AsyncIterator[AsyncSession]:
+    """Sessione AsyncSession come ruolo `echomind` (superuser, bypassa RLS).
+
+    Usata per seed/cleanup nei test integration. NON simula un utente:
+    è il "service_role" equivalente Supabase.
+    """
+    session_maker = app.state.session_maker  # type: ignore[attr-defined]
+    async with session_maker() as session:
+        yield session
+
+
+@pytest_asyncio.fixture
+async def seed_auth_user(
+    system_session: AsyncSession,
+) -> AsyncIterator[Callable[[UUID], Awaitable[None]]]:
+    """Factory che inserisce un utente fittizio in `auth.users`.
+
+    Pattern: `await seed_auth_user(user_id)` → riga creata.
+    Necessaria prima di creare profile, perché FK `profiles.id → auth.users.id`.
+
+    Cleanup automatico: alla fine del test, TRUNCATE CASCADE su `auth.users`
+    rimuove anche tutti i profile creati (via FK ON DELETE CASCADE).
+    Questo garantisce isolamento tra test senza richiedere autouse globale.
+    """
+
+    async def _insert(user_id: UUID) -> None:
+        await system_session.execute(
+            text("INSERT INTO auth.users (id) VALUES (:id) ON CONFLICT DO NOTHING"),
+            {"id": str(user_id)},
+        )
+        await system_session.commit()
+
+    yield _insert
+
+    # Cleanup post-test: rimuove tutto ciò creato durante il test
+    await system_session.execute(text("TRUNCATE TABLE auth.users CASCADE"))
+    await system_session.commit()
