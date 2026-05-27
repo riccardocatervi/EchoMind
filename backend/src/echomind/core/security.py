@@ -14,7 +14,7 @@ Architettura:
 
 Validazioni applicate:
 1. Header `Authorization` presente e ben formato (`Bearer <token>`)
-2. Firma valida (HMAC-SHA256 con `supabase_jwt_secret`)
+2. Firma valida (HS256 con secret OR ES256 con chiave pubblica ECDSA P-256)
 3. Non scaduto (`exp` > now)
 4. Audience matcha (`aud == settings.supabase_jwt_audience`)
 5. Claim obbligatori presenti (`sub`)
@@ -24,10 +24,13 @@ Errori sollevati: classi dedicate (vedi sotto). Verranno mappate a
 status code HTTP da api/deps.py.
 
 Sicurezza:
-- Algoritmo accettato è PIN-ato (`algorithms=["HS256"]`): previene
-  algorithm confusion attacks (token con `alg: "none"`, `alg: "RS256"`, ...).
-- `verify_aud=True` esplicito: rifiuta JWT emessi per servizi terzi
-  con lo stesso secret.
+- Algoritmo accettato è PIN-ato (`algorithms=[settings.supabase_jwt_algorithm]`):
+  previene algorithm confusion attacks (token con `alg: "none"`, algoritmi
+  diversi, ecc.).
+- `verify_aud=True` esplicito: rifiuta JWT emessi per servizi terzi.
+- Per ES256, la chiave privata non lascia mai Supabase: anche se il nostro
+  backend è compromesso, gli attaccanti possono solo VALIDARE token, mai
+  FORGIARLI.
 """
 
 from __future__ import annotations
@@ -119,12 +122,29 @@ def extract_bearer_token(authorization_header: str | None) -> str:
 # -----------------------------------------------------------------------------
 # Decodifica + validazione
 # -----------------------------------------------------------------------------
+def _resolve_verification_key(settings: Settings) -> str:
+    """Ritorna la chiave/secret per verificare il JWT, in base all'algoritmo.
+
+    - HS256 → secret HMAC condiviso
+    - ES256 → chiave pubblica ECDSA P-256 in formato PEM
+
+    Il `model_validator` di `Settings` garantisce che la credential corretta
+    sia presente, quindi qui assertiamo (mypy-friendly) invece di gestire None.
+    """
+    if settings.supabase_jwt_algorithm == "HS256":
+        assert settings.supabase_jwt_secret is not None  # garantito dal validator
+        return settings.supabase_jwt_secret.get_secret_value()
+    # ES256
+    assert settings.supabase_jwt_public_key is not None  # garantito dal validator
+    return settings.supabase_jwt_public_key.get_secret_value()
+
+
 def decode_and_validate(token: str, settings: Settings) -> JWTClaims:
     """Decodifica il JWT, verifica firma/scadenza/audience, ritorna i claim.
 
     Args:
         token: stringa JWT raw (senza 'Bearer ').
-        settings: configurazione applicativa (contiene secret + audience).
+        settings: configurazione applicativa (contiene credenziali + audience).
 
     Returns:
         JWTClaims con `sub`, `aud`, `exp`, eventuali claim extra.
@@ -135,13 +155,14 @@ def decode_and_validate(token: str, settings: Settings) -> JWTClaims:
         InvalidTokenError: firma invalida, JSON malformato, header sbagliato.
         MissingClaimError: claim obbligatori mancanti (es. 'sub').
     """
+    key = _resolve_verification_key(settings)
     try:
         # `algorithms=[...]` PINNATO esplicitamente: previene algorithm confusion.
         # `audience=...`: la libreria verifica che claim `aud` matchi.
         # Se non matcha → JWTClaimsError (sottoclasse di JWTError) → catchato sotto.
         payload = jwt.decode(
             token,
-            settings.supabase_jwt_secret.get_secret_value(),
+            key,
             algorithms=[settings.supabase_jwt_algorithm],
             audience=settings.supabase_jwt_audience,
             options={

@@ -28,7 +28,10 @@ def test_settings_loads_with_valid_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for key, value in VALID_ENV.items():
         monkeypatch.setenv(key, value)
 
-    settings = Settings()  # type: ignore[call-arg]
+    # _env_file=None: ignora il .env reale del repo, usa solo env vars.
+    # Senza questo, il .env può "vincere" sui default e far fallire le
+    # asserzioni che si aspettano i default.
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert settings.app_env == "development"  # default
     assert settings.log_level == "INFO"  # default
@@ -88,7 +91,7 @@ def test_secret_str_does_not_leak_in_repr(monkeypatch: pytest.MonkeyPatch) -> No
     for key, value in VALID_ENV.items():
         monkeypatch.setenv(key, value)
 
-    settings = Settings()  # type: ignore[call-arg]
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
     rendered = repr(settings)
     assert VALID_ENV["SUPABASE_JWT_SECRET"] not in rendered
@@ -101,8 +104,13 @@ def test_secret_str_does_not_leak_in_repr(monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_get_settings_is_singleton(monkeypatch: pytest.MonkeyPatch) -> None:
     """get_settings() ritorna sempre la stessa istanza (lru_cache)."""
+    # Non possiamo passare _env_file=None qui (get_settings() non accetta
+    # parametri), quindi anneghiamo le variabili di .env settando esplicitamente
+    # quelle che potrebbero confonderci.
     for key, value in VALID_ENV.items():
         monkeypatch.setenv(key, value)
+    monkeypatch.setenv("SUPABASE_JWT_ALGORITHM", "HS256")
+    monkeypatch.setenv("SUPABASE_JWT_PUBLIC_KEY", "")
     get_settings.cache_clear()  # reset prima del test
 
     first = get_settings()

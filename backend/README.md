@@ -42,21 +42,33 @@ Documentazione interattiva: `http://localhost:8000/docs` (Swagger UI).
 
 ## Variabili d'ambiente
 
-Tutte le variabili sono tipizzate da Pydantic Settings (`core/config.py`). Le obbligatorie già in M1:
+Tutte le variabili sono tipizzate da Pydantic Settings (`core/config.py`). Validazione cross-field a startup: l'app non parte se la combinazione è incoerente.
 
 | Variabile | Note |
 |---|---|
 | `DATABASE_URL` | `postgresql+asyncpg://echomind:echomind_dev@localhost:5432/echomind` per dev locale |
-| `SUPABASE_JWT_SECRET` | Per dev: secret random 64 byte. Per prod: dalla dashboard Supabase |
-| `SUPABASE_JWT_ALGORITHM` | Default `HS256` (Supabase) |
+| `SUPABASE_JWT_ALGORITHM` | `HS256` (legacy) o `ES256` (default nuovi progetti Supabase). Vedi [ADR-0003](../docs/adr/0003-jwt-es256-support.md) |
+| `SUPABASE_JWT_SECRET` | Obbligatorio se `algorithm=HS256`. Ignorato altrimenti |
+| `SUPABASE_JWT_PUBLIC_KEY` | Obbligatorio se `algorithm=ES256`. Accetta PEM o JWK (JSON Web Key) su singola riga |
 | `SUPABASE_JWT_AUDIENCE` | Default `authenticated` (Supabase) |
 
 Le altre (`SUPABASE_URL`, `NEO4J_*`, `B2_*`, ...) entrano in gioco nelle milestone successive.
 
-Generare un secret random per dev:
+### HS256 (dev/test locale)
+
+Generare un secret random:
 
 ```bash
 python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+### ES256 (Supabase reale)
+
+Dalla dashboard Supabase → **JWT Keys → Current Key → Public Key**, copia il blocco JSON (JWK) e mettilo su singola riga in `.env`:
+
+```env
+SUPABASE_JWT_ALGORITHM=ES256
+SUPABASE_JWT_PUBLIC_KEY={"keys":[{"kty":"EC","crv":"P-256","alg":"ES256","x":"...","y":"...","key_ops":["verify"]}]}
 ```
 
 ## Architettura layered

@@ -14,9 +14,9 @@ Riferimento: https://docs.pydantic.dev/latest/concepts/pydantic_settings/
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import Field, PostgresDsn, SecretStr
+from pydantic import Field, PostgresDsn, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -59,19 +59,35 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # Supabase JWT (autenticazione)
     # -------------------------------------------------------------------------
-    supabase_jwt_secret: SecretStr = Field(
-        ...,
+    # Supabase supporta due algoritmi:
+    #   - HS256 (legacy, simmetrico): un secret condiviso firma e verifica.
+    #     Usato dai progetti vecchi e dai nostri test (per semplicità di firma).
+    #   - ES256 (corrente, asimmetrico): chiave privata su Supabase, pubblica
+    #     (ECDSA P-256, formato PEM) distribuita per la verifica.
+    # In dev/test possiamo usare HS256. In produzione: ES256 (default Supabase).
+    supabase_jwt_algorithm: Literal["HS256", "ES256"] = Field(
+        default="HS256",
         description=(
-            "Secret HS256 per validare i JWT firmati da Supabase. "
-            "Ottenuto da: Supabase Dashboard → Settings → API → JWT Secret."
+            "Algoritmo di firma JWT. HS256 (legacy) o ES256 (corrente Supabase). "
+            "Pin esplicito per prevenire algorithm confusion attacks."
         ),
     )
 
-    supabase_jwt_algorithm: Literal["HS256"] = Field(
-        default="HS256",
+    supabase_jwt_secret: SecretStr | None = Field(
+        default=None,
         description=(
-            "Algoritmo di firma. Supabase usa HS256 di default. "
-            "Pin esplicito per prevenire 'algorithm confusion attacks'."
+            "Secret HMAC per HS256. Obbligatorio se algorithm=HS256, ignorato altrimenti. "
+            "Source (HS256 legacy): Supabase Dashboard → JWT Keys → Legacy HS256."
+        ),
+    )
+
+    supabase_jwt_public_key: SecretStr | None = Field(
+        default=None,
+        description=(
+            "Chiave pubblica ECDSA P-256 in formato PEM per ES256. "
+            "Obbligatoria se algorithm=ES256. "
+            "Source: Supabase Dashboard → JWT Keys → Current Key → Public Key (PEM). "
+            "Inserire come stringa singola con newline letterali (\\n)."
         ),
     )
 
@@ -82,6 +98,23 @@ class Settings(BaseSettings):
             "aud='authenticated' per utenti loggati."
         ),
     )
+
+    @model_validator(mode="after")
+    def _validate_jwt_credentials(self) -> Self:
+        """Garantisce che la credential corrispondente all'algoritmo sia presente.
+
+        Senza questo, scopriremmo l'errore solo a runtime, alla prima richiesta
+        autenticata. Con il validator, l'app non parte se la config è incoerente.
+        """
+        if self.supabase_jwt_algorithm == "HS256" and self.supabase_jwt_secret is None:
+            raise ValueError(
+                "supabase_jwt_secret è obbligatorio quando supabase_jwt_algorithm=HS256"
+            )
+        if self.supabase_jwt_algorithm == "ES256" and self.supabase_jwt_public_key is None:
+            raise ValueError(
+                "supabase_jwt_public_key è obbligatorio quando supabase_jwt_algorithm=ES256"
+            )
+        return self
 
     # -------------------------------------------------------------------------
     # Configurazione del loader Pydantic
