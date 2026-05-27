@@ -2,7 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-04-26
-- **Deciders**: Riccardo Catervi (owner), Senior Mentor (Claude)
+- **Deciders**: Riccardo Catervi
 
 ## Contesto e problema
 

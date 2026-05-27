@@ -29,7 +29,7 @@ Scrivilo quando:
 
 1. Copia [`template.md`](template.md) in un nuovo file.
 2. Scrivilo in **draft** (status `Proposed`).
-3. Discutilo (con il mentor / team / da soli specchiandoti) — è il momento dei dubbi.
+3. Discutilo (con il team o riflettendoci a fondo da soli) — è il momento dei dubbi.
 4. Imposta `Status: Accepted` e committalo insieme all'implementazione.
 
 ## Indice
