@@ -37,3 +37,4 @@ Scrivilo quando:
 | # | Titolo | Status |
 |---|---|---|
 | [0001](0001-tech-stack-foundations.md) | Fondamenta tecnologiche di M0 | Accepted |
+| [0002](0002-m1-auth-and-persistence.md) | Auth, persistenza e RLS per M1 | Accepted |
