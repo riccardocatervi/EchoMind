@@ -7,7 +7,8 @@
 #
 # Jobs:
 #   - backend-verify: lint + format check + typecheck + test (matrix py3.12)
-#   - secrets-scan : gitleaks su tutto il PR diff
+#                     con Postgres service per i test integration
+#   - secrets-scan  : gitleaks su tutto il PR diff
 #
 # Filosofia:
 #   - "fail fast": jobs indipendenti girano in parallelo
@@ -33,7 +34,7 @@ concurrency:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Backend: lint, format, types, test
+  # Backend: lint, format, types, test (integration con Postgres reale)
   # ---------------------------------------------------------------------------
   backend-verify:
     name: Backend verify (py${{ matrix.python-version }})
@@ -45,6 +46,32 @@ jobs:
     defaults:
       run:
         working-directory: backend
+
+    # Postgres service: GitHub Actions avvia un container postgres parallelo al job.
+    # Raggiungibile come `localhost:5432` dal runner.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: echomind
+          POSTGRES_PASSWORD: echomind_dev
+          POSTGRES_DB: echomind
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 5s
+
+    # Env condivise da tutti gli step (test + migration).
+    # Secret JWT è dummy — solo per firmare token nei test, non è reale.
+    env:
+      DATABASE_URL: postgresql+asyncpg://echomind:echomind_dev@localhost:5432/echomind
+      SUPABASE_JWT_ALGORITHM: HS256
+      SUPABASE_JWT_SECRET: ci-dummy-jwt-secret-64-bytes-padding-not-a-real-credential-xxxxxxx
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -62,6 +89,25 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --all-groups --frozen
+
+      - name: Install Postgres client (per psql nell'init step)
+        # Necessario per applicare lo script di init e aspettare il DB pronto.
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Apply Postgres dev-role init script
+        # Replica ciò che fa /docker-entrypoint-initdb.d in dev locale:
+        # crea il ruolo non-superuser `app_runtime` necessario per RLS.
+        # GitHub services NON supportano volume mount per initdb.d, quindi
+        # eseguiamo lo SQL manualmente via psql.
+        working-directory: ${{ github.workspace }}
+        env:
+          PGPASSWORD: echomind_dev
+        run: |
+          psql -h localhost -p 5432 -U echomind -d echomind \
+               -f infra/postgres-init/01_dev_role_setup.sql
+
+      - name: Apply Alembic migrations
+        run: uv run alembic upgrade head
 
       - name: Lint (ruff)
         run: uv run ruff check .
@@ -100,3 +146,6 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Esplicita il path del config (di default cerca .gitleaks.toml
+          # nella root ma in alcune versioni è necessario esplicitarlo).
+          GITLEAKS_CONFIG: ${{ github.workspace }}/.gitleaks.toml

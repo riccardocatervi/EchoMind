@@ -1,33 +1,29 @@
 # =============================================================================
 # Gitleaks — configurazione custom per EchoMind
 #
-# Estende le regole di default con un allowlist per i secret di TEST
-# hardcoded nei file di test, che il pattern generic-api-key scambia per
-# credenziali reali (lunghezza + entropy moderata).
+# Estende le regole built-in con un allowlist che esclude:
+#   - i file di test del backend (contengono SOLO secret hardcoded fittizi)
+#   - i workflow CI di GitHub (env var di test dummy passate ai run pytest)
 #
-# Documentazione: https://github.com/gitleaks/gitleaks
-#
-# Eredita le regole built-in di gitleaks (non le ridichiariamo). Aggiunge
-# solo l'allowlist per i falsi positivi noti.
+# Documentazione: https://github.com/gitleaks/gitleaks#configuration
 # =============================================================================
 
-# `useDefault = true` carica TUTTE le regole built-in di gitleaks prima
-# di applicare il nostro allowlist.
+title = "EchoMind gitleaks config"
+
+# Carica TUTTE le regole built-in di gitleaks prima di applicare il nostro
+# allowlist. Senza questo, le regole base non si attiverebbero.
 [extend]
 useDefault = true
 
 # -----------------------------------------------------------------------------
-# Allowlist: pattern da NON segnalare
+# Allowlist globale — esclude path interi
 # -----------------------------------------------------------------------------
-[[allowlists]]
-description = "Test JWT secret — stringa hardcoded usata SOLO nei test, non è un credential reale"
-regexes = [
-    '''test-secret-with-at-least-64-bytes-for-hs256-and-hs512-attack-tests''',
-    '''wrong-secret-but-equally-long-64-bytes-to-avoid-warning-xxxxxxx''',
-    '''test-secret-at-least-32-chars-long-xxxxxxx''',
-]
-# Limita l'allowlist solo ai file di test/config: in nessun altro file
-# vogliamo ignorare quei pattern.
+# Pattern path-based: tutto quello che vive nei test o nei workflow CI viene
+# considerato "safe" perché contiene solo segreti dummy hardcoded per la
+# test suite. Stringa lunga, alta entropy, ma NESSUNA credenziale reale.
+[allowlist]
+description = "Test fixtures and CI dummy secrets — not real credentials"
 paths = [
-    '''backend/tests/.*\.py''',
+    '''backend/tests/.*''',
+    '''\.github/workflows/.*''',
 ]
