@@ -29,7 +29,7 @@ Scrivilo quando:
 
 1. Copia [`template.md`](template.md) in un nuovo file.
 2. Scrivilo in **draft** (status `Proposed`).
-3. Discutilo (con il mentor / team / da soli specchiandoti) — è il momento dei dubbi.
+3. Discutilo (con il team o riflettendoci a fondo da soli) — è il momento dei dubbi.
 4. Imposta `Status: Accepted` e committalo insieme all'implementazione.
 
 ## Indice
@@ -37,3 +37,5 @@ Scrivilo quando:
 | # | Titolo | Status |
 |---|---|---|
 | [0001](0001-tech-stack-foundations.md) | Fondamenta tecnologiche di M0 | Accepted |
+| [0002](0002-m1-auth-and-persistence.md) | Auth, persistenza e RLS per M1 | Accepted |
+| [0003](0003-jwt-es256-support.md) | Supporto JWT ES256 in aggiunta a HS256 | Accepted |

@@ -36,6 +36,6 @@ pnpm-lock.yaml linguist-generated=true
 # Possono avere migliaia di righe. Senza questa dichiarazione le statistiche del linguaggio vengono skewate.
 #
 # Con linguist-generated=true:
-# - GitHub nasconder questi file nel diff di default.
+# - GitHub nasconde questi file nel diff di default.
 # - Le statistiche linguaggio vengono calcolate solo sul codice reale.
 # - I reviewer possono concentrarsi solo su ciò che conta.

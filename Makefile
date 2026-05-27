@@ -22,13 +22,15 @@ ifndef NO_COLOR
 	RESET  := \033[0m
 endif
 
-# Target di default: mostra help se invocato senza argomenti
+# Target di default: mostra help se invocato senza argomenti. 
+# Senza questa riga, eseguirebbe il primo target del file.
 .DEFAULT_GOAL := help
 
 # Tutti i target sono "phony" (non producono file con quel nome)
 .PHONY: help install dev verify lint format typecheck test test-cov \
         infra-up infra-down infra-logs infra-ps infra-reset \
-        precommit-install precommit-run check-env clean
+        precommit-install precommit-run check-env clean \
+        migrate migrate-down migration migrate-history serve
 
 # -----------------------------------------------------------------------------
 # Help auto-generato
@@ -91,7 +93,7 @@ test-cov: ## Test con report coverage
 # -----------------------------------------------------------------------------
 infra-up: ## Avvia Postgres + RabbitMQ + Redis in background
 	@if [ ! -f .env ]; then \
-		printf "$(YELLOW)⚠ .env non trovato. Copio da .env.example...$(RESET)\n"; \
+		printf "$(YELLOW) .env non trovato. Copio da .env.example...$(RESET)\n"; \
 		cp .env.example .env; \
 	fi
 	@$(COMPOSE) up -d --wait
@@ -100,7 +102,7 @@ infra-down: ## Ferma i container (mantiene i volumi)
 	@$(COMPOSE) down
 
 infra-reset: ## Ferma e rimuove ANCHE i volumi (perdita dati locali!)
-	@printf "$(YELLOW)⚠ Questo elimina tutti i dati locali. Continuare? [y/N]$(RESET) "
+	@printf "$(YELLOW) Questo elimina tutti i dati locali. Continuare? [y/N]$(RESET) "
 	@read ans && [ "$$ans" = "y" ] && $(COMPOSE) down -v || echo "annullato"
 
 infra-logs: ## Segue i log dei container
@@ -119,6 +121,33 @@ precommit-run: ## Esegue manualmente tutti gli hook su tutti i file
 	@cd backend && uv run pre-commit run --all-files
 
 # -----------------------------------------------------------------------------
+# Database migrations (Alembic)
+# -----------------------------------------------------------------------------
+migrate: ## Applica tutte le migration pendenti al DB locale
+	@printf "$(BLUE)-> alembic upgrade head$(RESET)\n"
+	@cd backend && uv run alembic upgrade head
+
+migrate-down: ## Rollback dell'ultima migration
+	@printf "$(YELLOW) Rollback ultima migration$(RESET)\n"
+	@cd backend && uv run alembic downgrade -1
+
+migrate-history: ## Mostra la cronologia delle migration
+	@cd backend && uv run alembic history --verbose
+
+migration: ## Crea una nuova migration vuota (uso: make migration MSG="add_email_field")
+	@if [ -z "$(MSG)" ]; then \
+		printf "$(YELLOW)Usage: make migration MSG=\"short_description\"$(RESET)\n"; exit 1; \
+	fi
+	@cd backend && uv run alembic revision -m "$(MSG)"
+
+# -----------------------------------------------------------------------------
+# Server di sviluppo
+# -----------------------------------------------------------------------------
+serve: ## Avvia uvicorn con hot-reload (Ctrl+C per fermare)
+	@printf "$(BLUE)-> uvicorn echomind.main:create_app --factory --reload$(RESET)\n"
+	@cd backend && uv run uvicorn echomind.main:create_app --factory --reload --host 0.0.0.0 --port 8000
+
+# -----------------------------------------------------------------------------
 # Pulizia
 # -----------------------------------------------------------------------------
 clean: ## Rimuove cache di test, build artifacts, __pycache__
@@ -128,4 +157,4 @@ clean: ## Rimuove cache di test, build artifacts, __pycache__
 	@find . -type d -name '.ruff_cache' -prune -exec rm -rf {} +
 	@find . -type d -name '*.egg-info' -prune -exec rm -rf {} +
 	@rm -rf backend/dist backend/build backend/htmlcov backend/.coverage
-	@printf "$(GREEN)✓ pulizia completata$(RESET)\n"
+	@printf "$(GREEN) pulizia completata$(RESET)\n"

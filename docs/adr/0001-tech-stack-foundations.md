@@ -2,7 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-04-26
-- **Deciders**: Riccardo Catervi (owner), Senior Mentor (Claude)
+- **Deciders**: Riccardo Catervi
 
 ## Contesto e problema
 
@@ -19,7 +19,7 @@ Stack tecnologica complessiva (FastAPI, Celery, Neo4j, React, ecc.) è già defi
 
 - **Velocità di feedback locale**: dev experience reattiva (sync/install <30s)
 - **Riproducibilità**: clone fresco → ambiente funzionante con un comando
-- **Curva di apprendimento minima**: progetto a singolo developer + mentor, niente overhead di tool sofisticati
+- **Curva di apprendimento minima**: progetto a singolo developer, niente overhead di tool sofisticati
 - **Sicurezza in dev**: niente accesso accidentale a dati di staging/prod
 - **Scope creep prevention**: M0 deve rimanere ~4 giorni, non espandersi
 
