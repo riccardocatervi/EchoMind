@@ -10,5 +10,17 @@ Composizione tipica:
 """
 
 from echomind.services.profile import ProfileService
+from echomind.services.storage import (
+    B2StorageService,
+    ObjectMetadata,
+    StorageError,
+    StorageObjectNotFoundError,
+)
 
-__all__ = ["ProfileService"]
+__all__ = [
+    "B2StorageService",
+    "ObjectMetadata",
+    "ProfileService",
+    "StorageError",
+    "StorageObjectNotFoundError",
+]
