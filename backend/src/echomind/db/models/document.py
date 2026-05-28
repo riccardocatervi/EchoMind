@@ -111,8 +111,15 @@ class Document(Base):
     # `Enum(DocumentStatus, name='document_status', create_type=False)`:
     # - name='document_status' matcha il tipo PostgreSQL già creato nella migration 0002
     # - create_type=False evita che SQLAlchemy tenti di ricreare il tipo (errore)
+    # - values_callable: SQLAlchemy di default usa il *nome* del enum member ("PENDING"),
+    #   ma Postgres accetta solo i *valori* lowercase ("pending"). Forziamo i valori.
     status: Mapped[DocumentStatus] = mapped_column(
-        Enum(DocumentStatus, name="document_status", create_type=False),
+        Enum(
+            DocumentStatus,
+            name="document_status",
+            create_type=False,
+            values_callable=lambda enum: [e.value for e in enum],
+        ),
         nullable=False,
         default=DocumentStatus.PENDING,
         server_default=text("'pending'::document_status"),

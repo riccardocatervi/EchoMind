@@ -180,3 +180,125 @@ async def test_rls_blocks_select_with_other_user_claim(
     await system_session.execute(text("COMMIT"))
 
     assert count_for_bob == 0  # Bob NON vede il profile di Alice
+
+
+# =============================================================================
+# RLS su documents (M2)
+# =============================================================================
+@pytest.mark.asyncio
+async def test_alice_cannot_see_bobs_documents(
+    client: httpx.AsyncClient,
+    auth_headers: Callable[[UUID | None], dict[str, str]],
+    seed_auth_user: Callable[[UUID], Awaitable[None]],
+    s3_mock_storage: object,
+) -> None:
+    """Pattern identico a profiles ma per documents:
+    Alice carica i suoi documenti, Bob carica i suoi → GET /documents
+    di ciascuno ritorna solo quello dell'altro 'invisibile'.
+    """
+    alice_id = uuid4()
+    bob_id = uuid4()
+    await seed_auth_user(alice_id)
+    await seed_auth_user(bob_id)
+
+    alice_headers = auth_headers(alice_id)
+    bob_headers = auth_headers(bob_id)
+
+    # Alice crea 2 documenti, Bob ne crea 1
+    for i in range(2):
+        await client.post(
+            "/api/v1/documents",
+            headers=alice_headers,
+            json={
+                "filename": f"alice-{i}.pdf",
+                "mime_type": "application/pdf",
+                "size_bytes": 100,
+            },
+        )
+    await client.post(
+        "/api/v1/documents",
+        headers=bob_headers,
+        json={
+            "filename": "bob.pdf",
+            "mime_type": "application/pdf",
+            "size_bytes": 100,
+        },
+    )
+
+    # Alice vede 2; Bob vede 1
+    alice_list = await client.get("/api/v1/documents", headers=alice_headers)
+    bob_list = await client.get("/api/v1/documents", headers=bob_headers)
+    assert len(alice_list.json()) == 2
+    assert len(bob_list.json()) == 1
+    # Nessun documento di Alice ha owner_id = bob_id
+    assert all(d["owner_id"] == str(alice_id) for d in alice_list.json())
+    assert all(d["owner_id"] == str(bob_id) for d in bob_list.json())
+
+
+@pytest.mark.asyncio
+async def test_alice_cannot_get_bobs_document_by_id(
+    client: httpx.AsyncClient,
+    auth_headers: Callable[[UUID | None], dict[str, str]],
+    seed_auth_user: Callable[[UUID], Awaitable[None]],
+    s3_mock_storage: object,
+) -> None:
+    """Even with the right URL, Alice gets 404 for Bob's document."""
+    alice_id = uuid4()
+    bob_id = uuid4()
+    await seed_auth_user(alice_id)
+    await seed_auth_user(bob_id)
+
+    # Bob crea documento
+    bob_init = await client.post(
+        "/api/v1/documents",
+        headers=auth_headers(bob_id),
+        json={
+            "filename": "secret.pdf",
+            "mime_type": "application/pdf",
+            "size_bytes": 100,
+        },
+    )
+    bob_doc_id = bob_init.json()["document_id"]
+
+    # Alice tenta GET dell'id di Bob → 404 (RLS lo nasconde)
+    response = await client.get(f"/api/v1/documents/{bob_doc_id}", headers=auth_headers(alice_id))
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_alice_cannot_delete_bobs_document(
+    client: httpx.AsyncClient,
+    auth_headers: Callable[[UUID | None], dict[str, str]],
+    seed_auth_user: Callable[[UUID], Awaitable[None]],
+    s3_mock_storage: object,
+    system_session: AsyncSession,
+) -> None:
+    """DELETE su documento altrui → 404 (RLS rende l'id 'invisibile')."""
+    alice_id = uuid4()
+    bob_id = uuid4()
+    await seed_auth_user(alice_id)
+    await seed_auth_user(bob_id)
+
+    bob_init = await client.post(
+        "/api/v1/documents",
+        headers=auth_headers(bob_id),
+        json={
+            "filename": "important.pdf",
+            "mime_type": "application/pdf",
+            "size_bytes": 100,
+        },
+    )
+    bob_doc_id = bob_init.json()["document_id"]
+
+    # Alice tenta delete → 404
+    response = await client.delete(
+        f"/api/v1/documents/{bob_doc_id}", headers=auth_headers(alice_id)
+    )
+    assert response.status_code == 404
+
+    # Verifica al DB (system session): documento di Bob ancora presente
+    result = await system_session.execute(
+        text("SELECT COUNT(*) FROM public.documents WHERE id = :id"),
+        {"id": bob_doc_id},
+    )
+    assert result.scalar_one() == 1

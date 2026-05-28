@@ -184,14 +184,27 @@ StorageServiceDep = Annotated[B2StorageService, Depends(get_storage_service)]
 
 
 async def get_document_service(
+    user_id: UserIdDep,
     session: SessionDep,
     storage: StorageServiceDep,
+    session_maker: SessionMakerDep,
 ) -> DocumentService:
     """Costruisce un DocumentService.
 
     `session` è RLS-bound: tutte le query del repository sotto sono filtrate
     automaticamente per owner_id == sub_claim.
+
+    Ensure profile esistente prima di ritornare: `documents.owner_id` ha FK
+    a `profiles(id)`, quindi senza il profile l'INSERT fallirebbe. Lo stesso
+    pattern just-in-time provisioning di M1 applicato a tutti gli endpoint
+    che inseriscono risorse "owned by user".
     """
+    profile_service = ProfileService(
+        repository=ProfileRepository(session),
+        system_session_maker=session_maker,
+    )
+    await profile_service.get_or_create(user_id)
+
     return DocumentService(
         repository=DocumentRepository(session),
         storage=storage,
