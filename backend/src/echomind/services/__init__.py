@@ -9,6 +9,12 @@ Composizione tipica:
     ProfileService(repository=ProfileRepository(session))
 """
 
+from echomind.services.document import (
+    DocumentAlreadyConfirmedError,
+    DocumentError,
+    DocumentNotFoundError,
+    DocumentService,
+)
 from echomind.services.profile import ProfileService
 from echomind.services.storage import (
     B2StorageService,
@@ -19,6 +25,10 @@ from echomind.services.storage import (
 
 __all__ = [
     "B2StorageService",
+    "DocumentAlreadyConfirmedError",
+    "DocumentError",
+    "DocumentNotFoundError",
+    "DocumentService",
     "ObjectMetadata",
     "ProfileService",
     "StorageError",
