@@ -126,3 +126,80 @@ def test_case_insensitive_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
 
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
     assert str(settings.database_url).startswith("postgresql+asyncpg://")
+
+
+# =============================================================================
+# B2 + upload limits (M2)
+# =============================================================================
+def test_b2_credentials_optional_in_development(monkeypatch: pytest.MonkeyPatch) -> None:
+    """In dev, le credenziali B2 sono opzionali (default None)."""
+    for key, value in VALID_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("APP_ENV", "development")
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.b2_key_id is None
+    assert settings.b2_application_key is None
+    assert settings.b2_bucket_name is None
+    assert settings.b2_endpoint is None
+    # Default per region e limiti
+    assert settings.b2_region == "eu-central-003"
+    assert settings.max_upload_size_bytes == 50 * 1024 * 1024
+    assert settings.upload_presign_ttl_seconds == 15 * 60
+
+
+def test_b2_credentials_required_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    """In produzione, l'assenza di credenziali B2 deve far fallire all'avvio."""
+    for key, value in VALID_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("APP_ENV", "production")
+    # Nessuna B2_* settata
+
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+    error_msg = str(exc_info.value).lower()
+    # Il validator deve elencare TUTTE le variabili mancanti
+    assert "b2_key_id" in error_msg
+    assert "b2_application_key" in error_msg
+    assert "b2_bucket_name" in error_msg
+    assert "b2_endpoint" in error_msg
+
+
+def test_b2_credentials_complete_in_production_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """In produzione, con TUTTE le B2 settate l'app parte senza errori."""
+    for key, value in VALID_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("B2_KEY_ID", "prod-key-id-dummy")
+    monkeypatch.setenv("B2_APPLICATION_KEY", "prod-app-key-dummy-secret")
+    monkeypatch.setenv("B2_BUCKET_NAME", "echomind-prod")
+    monkeypatch.setenv("B2_ENDPOINT", "https://s3.eu-central-003.backblazeb2.com")
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.b2_bucket_name == "echomind-prod"
+    assert settings.b2_endpoint == "https://s3.eu-central-003.backblazeb2.com"
+
+
+def test_upload_presign_ttl_capped_at_one_hour(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """TTL > 1 ora rifiutato (limite di sicurezza: blast radius del leak URL)."""
+    for key, value in VALID_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("UPLOAD_PRESIGN_TTL_SECONDS", "3601")  # 1h + 1s
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_max_upload_size_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`max_upload_size_bytes` deve essere strettamente positivo."""
+    for key, value in VALID_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("MAX_UPLOAD_SIZE_BYTES", "0")
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)  # type: ignore[call-arg]
