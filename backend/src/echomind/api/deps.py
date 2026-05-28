@@ -31,9 +31,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from echomind.core.config import Settings
 from echomind.core.security import JWTClaims, decode_and_validate, extract_bearer_token
-from echomind.db.repositories import ProfileRepository
+from echomind.db.repositories import DocumentRepository, ProfileRepository
 from echomind.db.session import set_rls_user
-from echomind.services import ProfileService
+from echomind.services import (
+    B2StorageService,
+    DocumentService,
+    ProfileService,
+    StorageError,
+)
 
 
 # -----------------------------------------------------------------------------
@@ -157,3 +162,40 @@ async def get_profile_service(
 
 
 ProfileServiceDep = Annotated[ProfileService, Depends(get_profile_service)]
+
+
+def get_storage_service(request: Request) -> B2StorageService:
+    """Ritorna il B2StorageService creato nel lifespan, o solleva 503.
+
+    Se in dev le settings B2 sono incomplete, lifespan ha messo None →
+    qui solleviamo StorageError che viene mappato a 503 (Service Unavailable)
+    dal handler globale.
+    """
+    storage: B2StorageService | None = request.app.state.storage
+    if storage is None:
+        raise StorageError(
+            "Storage backend not configured (B2 settings missing). "
+            "Configure B2_KEY_ID / B2_APPLICATION_KEY / B2_BUCKET_NAME / B2_ENDPOINT."
+        )
+    return storage
+
+
+StorageServiceDep = Annotated[B2StorageService, Depends(get_storage_service)]
+
+
+async def get_document_service(
+    session: SessionDep,
+    storage: StorageServiceDep,
+) -> DocumentService:
+    """Costruisce un DocumentService.
+
+    `session` è RLS-bound: tutte le query del repository sotto sono filtrate
+    automaticamente per owner_id == sub_claim.
+    """
+    return DocumentService(
+        repository=DocumentRepository(session),
+        storage=storage,
+    )
+
+
+DocumentServiceDep = Annotated[DocumentService, Depends(get_document_service)]
