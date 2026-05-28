@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     # Database
     # -------------------------------------------------------------------------
     database_url: PostgresDsn = Field(
-        ...,  # obbligatorio: niente default → app non parte se manca
+        ...,  # obbligatorio: niente default --> app non parte se manca
         description=(
             "Connection string PostgreSQL. Formato: postgresql+asyncpg://user:pass@host:port/dbname"
         ),

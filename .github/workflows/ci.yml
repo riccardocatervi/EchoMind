@@ -90,9 +90,12 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-groups --frozen
 
-      - name: Install Postgres client (per psql nell'init step)
-        # Necessario per applicare lo script di init e aspettare il DB pronto.
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Install system packages (Postgres client + libmagic)
+        # - postgresql-client: psql per applicare init script + aspettare DB pronto
+        # - libmagic1: bindings nativi per python-magic (MIME detection server-side)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client libmagic1
 
       - name: Apply Postgres dev-role init script
         # Replica ciò che fa /docker-entrypoint-initdb.d in dev locale:
