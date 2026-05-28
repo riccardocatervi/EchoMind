@@ -19,7 +19,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    # Triggera la CI anche sui feature branch durante lo sviluppo:
+    # così abbiamo feedback continuo senza dover aprire una PR draft.
+    branches: [main, develop, 'feature/**']
   pull_request:
     branches: [main, develop]
 
@@ -27,9 +29,13 @@ on:
 permissions:
   contents: read
 
-# Annulla run obsoleti se arriva un push successivo sullo stesso branch
+# Concurrency: un solo run attivo per branch.
+# `head_ref` è il nome del branch quando l'evento è PR (es. "feature/m2-...").
+# `ref_name` è il nome corto del ref nel caso push (es. "main", "feature/m2-...").
+# Usandoli in OR, push e pull_request sullo stesso branch condividono il group
+# → uno cancella l'altro invece di duplicarsi.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
