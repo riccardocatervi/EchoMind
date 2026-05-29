@@ -2,7 +2,6 @@
 
 Servizio Python (FastAPI + Celery) per estrazione e gestione del knowledge graph.
 
-> Per la visione e l'architettura completa, vedi [`/CLAUDE.md`](../CLAUDE.md) e [`/docs/architecture-phase0.md`](../docs/architecture-phase0.md).
 > Decisioni architetturali tracciate in [`/docs/adr/`](../docs/adr/).
 
 ## Requisiti host

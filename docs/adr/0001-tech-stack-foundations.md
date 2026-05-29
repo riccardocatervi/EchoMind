@@ -13,7 +13,7 @@ EchoMind è in fase di scaffolding (Milestone M0 — Project Foundation). Prima 
 3. **Tooling di monorepo** (orchestrazione di backend + frontend)
 4. **Tempistica scaffolding frontend** (in M0 oppure rimandato a M6)
 
-Stack tecnologica complessiva (FastAPI, Celery, Neo4j, React, ecc.) è già definita nel CLAUDE.md e fuori dallo scope di questo ADR.
+Stack tecnologica complessiva (FastAPI, Celery, Neo4j, React, ecc.) è già definita a livello di visione di progetto e fuori dallo scope di questo ADR.
 
 ## Driver decisionali
 
@@ -129,5 +129,3 @@ Stack tecnologica complessiva (FastAPI, Celery, Neo4j, React, ecc.) è già defi
 - [PEP 735 — Dependency Groups](https://peps.python.org/pep-0735/)
 - [src layout vs flat layout](https://packaging.python.org/en/latest/discussions/src-layout-vs-flat-layout/)
 - [MADR template](https://adr.github.io/madr/)
-- `/CLAUDE.md` — vincoli e operating rules del progetto
-- `/docs/architecture-phase0.md` — roadmap milestone
