@@ -13,8 +13,8 @@ Pattern d'uso:
     log = get_logger(__name__)
     log.info("file_uploaded", user_id=str(uid), file_size=1024)
 
-In produzione → JSON line per ogni log, ingeribile da ELK/Datadog/Loki.
-In dev → output colorato e indentato, ideale per debugging.
+In produzione --> JSON line per ogni log, ingeribile da ELK/Datadog/Loki.
+In dev --> output colorato e indentato, ideale per debugging.
 """
 
 from __future__ import annotations
@@ -62,7 +62,7 @@ def configure_logging(*, log_level: str, json_logs: bool) -> None:
 
     Args:
         log_level: soglia minima ("DEBUG", "INFO", ...). Lower = più verboso.
-        json_logs: True → JSON renderer (prod/staging); False → console (dev).
+        json_logs: True --> JSON renderer (prod/staging); False --> console (dev).
 
     Questa funzione va chiamata UNA VOLTA all'avvio dell'app, prima di
     qualunque emit di log. Tipicamente nel lifespan/startup di FastAPI.
@@ -112,7 +112,7 @@ def configure_logging(*, log_level: str, json_logs: bool) -> None:
     root_logger.handlers = [handler]
     root_logger.setLevel(log_level.upper())
 
-    # Riduci verbosità di librerie troppo loquaci (regola comune).
+    # Riduce verbosità di librerie troppo loquaci (regola comune).
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 

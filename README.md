@@ -1,18 +1,16 @@
 # EchoMind
 
-> AI-Powered GraphRAG: trasforma documenti e audio in **knowledge graph interattivi** e riassunti multilivello.
+> GraphRAG application that transforms documents and audio into **interactive knowledge graphs** and multi-level summaries.
 
 EchoMind ingerisce testi o registrazioni audio, ne estrae automaticamente i concetti e le relazioni, costruisce un grafo navigabile e permette di interrogare il contenuto in linguaggio naturale.
 
 ## Documentazione
 
-- [`CLAUDE.md`](CLAUDE.md) — visione del progetto, stack architetturale, operating rules
-- [`docs/architecture-phase0.md`](docs/architecture-phase0.md) — analisi completa, milestone, risk register
 - [`docs/adr/`](docs/adr/) — Architectural Decision Records
 
 ## Stato attuale
 
-**M0 — Project Foundation** (in corso). Solo scaffolding e tooling. Niente codice applicativo. Vedi roadmap milestone in [`architecture-phase0.md`](docs/architecture-phase0.md#4-milestone-alto-livello).
+**M2 — Content Ingestion** completata. M0 (project foundation) e M1 (identity & persistence) già mergiate in `develop`.
 
 ## Quick start
 
@@ -44,6 +42,12 @@ cp .env.example .env
 
 # 4. Avvia infrastruttura locale (Postgres + RabbitMQ + Redis)
 make dev
+
+# 5. Applica le migration Alembic
+make migrate
+
+# 6. Avvia uvicorn con hot-reload
+make serve
 ```
 
 UI utili dopo `make dev`:
@@ -72,28 +76,30 @@ EchoMind/
 ├── backend/              # FastAPI + Celery (Python)
 │   ├── pyproject.toml
 │   ├── src/echomind/
+│   ├── alembic/
 │   └── tests/
 ├── frontend/             # React + Vite (placeholder, scaffolding in M6)
 ├── infra/
-│   └── docker-compose.dev.yml
+│   ├── docker-compose.dev.yml
+│   └── postgres-init/    # script di bootstrap ruoli Postgres
 ├── docs/
-│   ├── architecture-phase0.md
-│   └── adr/
+│   └── adr/              # Architectural Decision Records
 ├── scripts/
-│   └── check_env.sh
+│   ├── check_env.sh
+│   └── check_no_real_secrets_in_tests.py
 ├── .github/workflows/    # CI GitHub Actions
 ├── .env.example          # template variabili (committato; .env reale escluso)
-├── Makefile              # interfaccia developer
-└── CLAUDE.md
+├── .gitleaks.toml        # config gitleaks per scan secrets
+└── Makefile              # interfaccia developer
 ```
 
 ## Workflow di sviluppo
 
-1. **Branch dedicato per ogni feature**: `feature/<nome-feature>`
-2. **Plan prima del codice**: per ogni task non triviale, vedi `CLAUDE.md` (Plan Mode First)
-3. **Pre-commit hooks** intercettano errori prima del push
-4. **CI obbligatoria** prima del merge in `main`/`develop`
-5. **ADR** per ogni decisione architetturale significativa
+1. **Branch dedicato per ogni feature**: `feature/<nome-feature>` (a partire da `develop`)
+2. **Plan prima del codice**: per task non triviali, scrivere un piano breve (target file, sequenza, trade-off) prima dell'implementazione
+3. **Pre-commit hooks** intercettano errori prima del push (ruff, mypy, gitleaks, custom secret scanner)
+4. **CI obbligatoria** prima del merge in `main`/`develop` (lint + typecheck + test integration con Postgres + secrets scan)
+5. **ADR** per ogni decisione architetturale significativa (vedi [`docs/adr/`](docs/adr/))
 
 ## Licenza
 

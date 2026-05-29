@@ -108,10 +108,12 @@ def extract_bearer_token(authorization_header: str | None) -> str:
     if not authorization_header:
         raise MissingTokenError("Authorization header is missing")
 
+    # Impostando maxsplit=1, dico a Python di fare un solo taglio al primo spazio che trova
     parts = authorization_header.split(maxsplit=1)
     if len(parts) != 2 or parts[0].lower() != "bearer":
         raise MissingTokenError("Authorization header must be in format 'Bearer <token>'")
 
+    # strip() elimina tutti gli spazi bianchi invisibili rimasti all'inizio o alla fine
     token = parts[1].strip()
     if not token:
         raise MissingTokenError("Bearer token is empty")
@@ -125,11 +127,11 @@ def extract_bearer_token(authorization_header: str | None) -> str:
 def _resolve_verification_key(settings: Settings) -> str:
     """Ritorna la chiave/secret per verificare il JWT, in base all'algoritmo.
 
-    - HS256 → secret HMAC condiviso
-    - ES256 → chiave pubblica ECDSA P-256 in formato PEM
+    - HS256 --> secret HMAC condiviso
+    - ES256 --> chiave pubblica ECDSA P-256 in formato PEM
 
     Il `model_validator` di `Settings` garantisce che la credential corretta
-    sia presente, quindi qui assertiamo (mypy-friendly) invece di gestire None.
+    sia presente, quindi qui assert (mypy-friendly) invece di gestire None.
     """
     if settings.supabase_jwt_algorithm == "HS256":
         assert settings.supabase_jwt_secret is not None  # garantito dal validator
@@ -159,7 +161,7 @@ def decode_and_validate(token: str, settings: Settings) -> JWTClaims:
     try:
         # `algorithms=[...]` PINNATO esplicitamente: previene algorithm confusion.
         # `audience=...`: la libreria verifica che claim `aud` matchi.
-        # Se non matcha → JWTClaimsError (sottoclasse di JWTError) → catchato sotto.
+        # Se non matcha --> JWTClaimsError (sottoclasse di JWTError) → catchato sotto.
         payload = jwt.decode(
             token,
             key,

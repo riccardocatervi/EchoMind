@@ -2,7 +2,6 @@
 
 Servizio Python (FastAPI + Celery) per estrazione e gestione del knowledge graph.
 
-> Per la visione e l'architettura completa, vedi [`/CLAUDE.md`](../CLAUDE.md) e [`/docs/architecture-phase0.md`](../docs/architecture-phase0.md).
 > Decisioni architetturali tracciate in [`/docs/adr/`](../docs/adr/).
 
 ## Requisiti host
@@ -32,11 +31,20 @@ make format             # auto-fix ruff
 make verify             # lint + typecheck + test (= ciò che CI verifica)
 ```
 
-Endpoint base disponibili:
-- `GET  /api/v1/health` (no auth) — liveness check
-- `GET  /api/v1/users/me` — claim del JWT corrente
-- `GET  /api/v1/profiles/me` — profile utente (lazy create)
+Endpoint disponibili:
+
+**Identity (M1)**
+- `GET   /api/v1/health` (no auth) — liveness check
+- `GET   /api/v1/users/me` — claim del JWT corrente
+- `GET   /api/v1/profiles/me` — profile utente (lazy create)
 - `PATCH /api/v1/profiles/me` — aggiornamento parziale del profile
+
+**Content Ingestion (M2)**
+- `POST   /api/v1/documents` — init upload (genera presigned URL B2)
+- `POST   /api/v1/documents/{id}/confirm` — conferma upload + MIME validation server-side
+- `GET    /api/v1/documents` — lista paginata (RLS-filtered)
+- `GET    /api/v1/documents/{id}` — dettaglio
+- `DELETE /api/v1/documents/{id}` — hard delete (B2 object + DB)
 
 Documentazione interattiva: `http://localhost:8000/docs` (Swagger UI).
 
@@ -51,8 +59,11 @@ Tutte le variabili sono tipizzate da Pydantic Settings (`core/config.py`). Valid
 | `SUPABASE_JWT_SECRET` | Obbligatorio se `algorithm=HS256`. Ignorato altrimenti |
 | `SUPABASE_JWT_PUBLIC_KEY` | Obbligatorio se `algorithm=ES256`. Accetta PEM o JWK (JSON Web Key) su singola riga |
 | `SUPABASE_JWT_AUDIENCE` | Default `authenticated` (Supabase) |
+| `B2_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET_NAME`, `B2_ENDPOINT` | Obbligatorie in produzione. In dev: opzionali (gli endpoint `/documents` ritornano 503 finché non configurate). Vedi [ADR-0004](../docs/adr/0004-content-ingestion.md) |
+| `MAX_UPLOAD_SIZE_BYTES` | Default 50 MB |
+| `UPLOAD_PRESIGN_TTL_SECONDS` | Default 900 (15 min). Cap a 3600 (1h) |
 
-Le altre (`SUPABASE_URL`, `NEO4J_*`, `B2_*`, ...) entrano in gioco nelle milestone successive.
+Le altre (`SUPABASE_URL`, `NEO4J_*`, `OPENAI_*`, ...) entrano in gioco nelle milestone successive.
 
 ### HS256 (dev/test locale)
 
@@ -147,17 +158,31 @@ cd backend && uv run pytest tests/test_rls.py -v   # solo un file
 
 Convenzione: i test che toccano il DB chiedono la fixture `seed_auth_user` o `system_session`. I test puramente unit (no DB) usano solo `client` e `auth_headers`.
 
-## Stato corrente (M1 — completato)
+## Stato corrente (M2 — completato)
 
-- [x] Pydantic Settings con tipi forti + SecretStr
+### M1 — Identity & Persistence Foundations
+- [x] Pydantic Settings con tipi forti + SecretStr + validator cross-field
 - [x] Structlog con context propagation (request_id)
 - [x] SQLAlchemy 2.0 async + asyncpg + connection pool
-- [x] Alembic + prima migration (schema auth + profiles + RLS + trigger)
-- [x] JWT validation (HMAC HS256, audience, expiry, algorithm pinning)
+- [x] Alembic con prima migration (schema auth + profiles + RLS + trigger)
+- [x] JWT validation HS256/ES256 + audience + expiry + algorithm pinning
 - [x] FastAPI app factory + lifespan + RequestIdMiddleware
-- [x] Exception handlers per AuthError → HTTP status
-- [x] Endpoint `/health`, `/users/me`, `/profiles/me` (GET + PATCH)
+- [x] Exception handlers per errori di dominio → HTTP status
+- [x] Endpoint `/health`, `/users/me`, `/profiles/me`
 - [x] Repository pattern + service layer + just-in-time provisioning
 - [x] Test integration con DB reale + verifica RLS esplicita
 
-Prossima milestone: **M2 — Content Ingestion** (presigned URLs verso Backblaze B2, upload diretto, validazione MIME).
+### M2 — Content Ingestion
+- [x] `B2StorageService` wrapper boto3 con S3-compatible API
+- [x] Alembic migration 0002 (documents + RLS + indice composito + ENUM)
+- [x] Schema documents con FK CASCADE a profiles, lifecycle pending→uploaded/failed
+- [x] Presigned URL PUT verso B2 con `Content-Length` constraint (mitigazione "size lying")
+- [x] MIME validation server-side via `python-magic` (magic bytes)
+- [x] `MIME_EQUIVALENCES` map per gestire alias noti (DOCX-as-ZIP, WAV, M4A-as-MP4)
+- [x] Endpoint `/documents` (POST init, POST confirm, GET list, GET detail, DELETE)
+- [x] Hard delete idempotente (B2 object + DB row in ordine)
+- [x] Just-in-time profile provisioning come dependency (riusabile per future risorse owned)
+- [x] Test integration con moto (mock S3) + RLS isolation cross-utente
+- [x] Graceful degradation: 503 quando B2 non configurato in dev
+
+Prossima milestone: **M3 — Async Job Infrastructure** (Celery + RabbitMQ, task fittizio end-to-end, dead-letter queue).

@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from echomind.core.config import Settings
 from echomind.db.session import create_engine, create_session_maker
 from echomind.main import create_app
+from echomind.services.storage import B2StorageService
 
 # Secret abbastanza lungo da non triggerare InsecureKeyLengthWarning di pyjwt
 # (riusato in test_security.py per gli stessi motivi). Non è una credenziale
@@ -69,6 +70,9 @@ async def app(test_settings: Settings) -> AsyncIterator[object]:
     application = create_app(test_settings)
     application.state.engine = create_engine(test_settings)
     application.state.session_maker = create_session_maker(application.state.engine)
+    # Storage default a None: i test che lo richiedono attivano la fixture
+    # `s3_mock_storage` che lo sostituisce con un client moto.
+    application.state.storage = None
     try:
         yield application
     finally:
@@ -187,3 +191,39 @@ async def seed_auth_user(
     # Cleanup post-test: rimuove tutto ciò creato durante il test
     await system_session.execute(text("TRUNCATE TABLE auth.users CASCADE"))
     await system_session.commit()
+
+
+# -----------------------------------------------------------------------------
+# Storage (moto mock S3) — per i test integration di /documents
+# -----------------------------------------------------------------------------
+TEST_BUCKET = "echomind-test"
+
+
+@pytest_asyncio.fixture
+async def s3_mock_storage(app: object) -> AsyncIterator[B2StorageService]:
+    """Sostituisce `app.state.storage` con un B2StorageService puntato a moto.
+
+    Pattern: il lifespan reale tenta `from_settings(...)` e fallisce (B2 vuote
+    nei test_settings). Il valore di app.state.storage diventa None. Qui lo
+    rimpiazziamo con un'istanza valida ma puntata a S3 in-memory.
+
+    Yieldiamo il service per test che vogliono ispezionare direttamente il
+    bucket (es. verifica che un object sia stato uploadato/cancellato).
+    """
+    import boto3
+    from moto import mock_aws
+
+    with mock_aws():
+        client = boto3.client("s3", region_name="us-east-1")
+        client.create_bucket(Bucket=TEST_BUCKET)
+        storage = B2StorageService(
+            client=client,
+            bucket=TEST_BUCKET,
+            presign_ttl_seconds=900,
+        )
+        original = getattr(app.state, "storage", None)  # type: ignore[attr-defined]
+        app.state.storage = storage  # type: ignore[attr-defined]
+        try:
+            yield storage
+        finally:
+            app.state.storage = original  # type: ignore[attr-defined]

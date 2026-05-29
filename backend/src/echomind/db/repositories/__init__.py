@@ -10,6 +10,7 @@ Niente import di FastAPI, Pydantic schemas o services qui: il repository
 è il livello più basso "che parla col DB" e deve restare lightweight.
 """
 
+from echomind.db.repositories.document import DocumentRepository
 from echomind.db.repositories.profile import ProfileRepository
 
-__all__ = ["ProfileRepository"]
+__all__ = ["DocumentRepository", "ProfileRepository"]

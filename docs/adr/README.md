@@ -39,3 +39,4 @@ Scrivilo quando:
 | [0001](0001-tech-stack-foundations.md) | Fondamenta tecnologiche di M0 | Accepted |
 | [0002](0002-m1-auth-and-persistence.md) | Auth, persistenza e RLS per M1 | Accepted |
 | [0003](0003-jwt-es256-support.md) | Supporto JWT ES256 in aggiunta a HS256 | Accepted |
+| [0004](0004-content-ingestion.md) | Content ingestion: presigned URL, S3, MIME via magic bytes | Accepted |

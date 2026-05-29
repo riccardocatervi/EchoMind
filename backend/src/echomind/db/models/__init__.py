@@ -9,6 +9,7 @@ Niente import qui di cose non-modello (services, repositories) per
 evitare cicli import.
 """
 
+from echomind.db.models.document import Document, DocumentStatus
 from echomind.db.models.profile import Profile
 
-__all__ = ["Profile"]
+__all__ = ["Document", "DocumentStatus", "Profile"]

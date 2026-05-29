@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     # Database
     # -------------------------------------------------------------------------
     database_url: PostgresDsn = Field(
-        ...,  # obbligatorio: niente default → app non parte se manca
+        ...,  # obbligatorio: niente default --> app non parte se manca
         description=(
             "Connection string PostgreSQL. Formato: postgresql+asyncpg://user:pass@host:port/dbname"
         ),
@@ -99,6 +99,65 @@ class Settings(BaseSettings):
         ),
     )
 
+    # -------------------------------------------------------------------------
+    # Backblaze B2 (S3-compatible object storage) — M2
+    # -------------------------------------------------------------------------
+    # Tutti opzionali in dev (usiamo moto come mock S3 nei test).
+    # Obbligatori in produzione: garantito dal validator cross-field sotto.
+    b2_key_id: SecretStr | None = Field(
+        default=None,
+        description=(
+            "Backblaze B2 keyID. Source: secure.backblaze.com → App Keys. "
+            "Obbligatorio se app_env=production."
+        ),
+    )
+
+    b2_application_key: SecretStr | None = Field(
+        default=None,
+        description=("Backblaze B2 applicationKey (secret). Obbligatorio se app_env=production."),
+    )
+
+    b2_bucket_name: str | None = Field(
+        default=None,
+        description="Nome del bucket B2 privato. Obbligatorio se app_env=production.",
+    )
+
+    b2_endpoint: str | None = Field(
+        default=None,
+        description=(
+            "URL endpoint S3-compatible di B2, es. "
+            "https://s3.eu-central-003.backblazeb2.com. "
+            "Obbligatorio se app_env=production."
+        ),
+    )
+
+    b2_region: str = Field(
+        default="eu-central-003",
+        description="Region B2 (parte del path nell'endpoint). Default EU central.",
+    )
+
+    # -------------------------------------------------------------------------
+    # Upload limits — M2
+    # -------------------------------------------------------------------------
+    max_upload_size_bytes: int = Field(
+        default=50 * 1024 * 1024,  # 50 MB
+        gt=0,
+        description=(
+            "Limite massimo per file in bytes. Usato per: validazione lato server, "
+            "presigned URL condition, verifica HEAD post-upload. Default 50 MB."
+        ),
+    )
+
+    upload_presign_ttl_seconds: int = Field(
+        default=15 * 60,  # 15 minuti
+        gt=0,
+        le=60 * 60,  # max 1 ora (security: TTL brevi limitano il blast radius)
+        description=(
+            "Durata di vita del presigned URL prima che B2 lo rifiuti. "
+            "Default 15 minuti. Massimo accettato: 1 ora."
+        ),
+    )
+
     @model_validator(mode="after")
     def _validate_jwt_credentials(self) -> Self:
         """Garantisce che la credential corrispondente all'algoritmo sia presente.
@@ -116,6 +175,32 @@ class Settings(BaseSettings):
             )
         return self
 
+    @model_validator(mode="after")
+    def _validate_b2_credentials_in_production(self) -> Self:
+        """In produzione, le credenziali B2 sono obbligatorie.
+
+        In dev/staging restano opzionali: dev usa moto (mock S3) e staging
+        può puntare a un bucket di test diverso. Solo in production l'assenza
+        è un errore di configurazione che deve fallire all'avvio.
+        """
+        if self.app_env != "production":
+            return self
+
+        missing: list[str] = []
+        if self.b2_key_id is None:
+            missing.append("b2_key_id")
+        if self.b2_application_key is None:
+            missing.append("b2_application_key")
+        if self.b2_bucket_name is None:
+            missing.append("b2_bucket_name")
+        if self.b2_endpoint is None:
+            missing.append("b2_endpoint")
+        if missing:
+            raise ValueError(
+                f"In produzione le variabili B2 sono obbligatorie. Mancanti: {', '.join(missing)}"
+            )
+        return self
+
     # -------------------------------------------------------------------------
     # Configurazione del loader Pydantic
     # -------------------------------------------------------------------------
@@ -125,7 +210,7 @@ class Settings(BaseSettings):
         env_file=("../.env", ".env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
-        extra="ignore",  # ignora variabili extra in .env (es. NEO4J_*, B2_*: arrivano in M2+)
+        extra="ignore",  # ignora variabili extra in .env (es. NEO4J_*, OPENAI_*: arrivano dopo)
     )
 
 

@@ -32,6 +32,12 @@ from echomind.core.security import (
     MissingTokenError,
 )
 from echomind.db.session import create_engine, create_session_maker
+from echomind.services import (
+    B2StorageService,
+    DocumentAlreadyConfirmedError,
+    DocumentNotFoundError,
+    StorageError,
+)
 
 
 # -----------------------------------------------------------------------------
@@ -90,6 +96,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.engine = create_engine(settings)
     app.state.session_maker = create_session_maker(app.state.engine)
     log.info("db_engine_ready")
+
+    # Storage service (B2 / S3-compatible). Opzionale in dev: se le settings
+    # B2 non sono popolate, restiamo a None e gli endpoint /documents
+    # ritornano 503 (Service Unavailable). In produzione le settings sono
+    # obbligatorie (validator cross-field) → from_settings non fallisce.
+    try:
+        app.state.storage = B2StorageService.from_settings(settings)
+        log.info("storage_service_ready")
+    except StorageError as exc:
+        app.state.storage = None
+        log.warning("storage_service_unavailable", reason=str(exc))
 
     yield  # ← qui gira l'app
 
@@ -184,6 +201,29 @@ def _register_exception_handlers(app: FastAPI) -> None:
         # 403: il token è valido e firmato, ma manca un claim obbligatorio
         # → non è una questione di identità (401) ma di autorizzazione (403).
         return _make_response(403, "missing_claim", "Required JWT claim is missing")
+
+    # -------------------------------------------------------------------------
+    # Errori di dominio Document (M2)
+    # -------------------------------------------------------------------------
+    @app.exception_handler(DocumentNotFoundError)
+    async def _on_document_not_found(request: Request, exc: DocumentNotFoundError) -> JSONResponse:
+        # 404 anche se il documento esiste ma appartiene a un altro utente:
+        # RLS lo nasconde alla SELECT → repository ritorna None → DocumentNotFoundError.
+        # Indistinguibilità by design: non rivela l'esistenza di documenti altrui.
+        return _make_response(404, "document_not_found", "Document not found")
+
+    @app.exception_handler(DocumentAlreadyConfirmedError)
+    async def _on_document_already_confirmed(
+        request: Request, exc: DocumentAlreadyConfirmedError
+    ) -> JSONResponse:
+        # 409 Conflict: stato corrente incompatibile con l'operazione.
+        return _make_response(409, "document_already_confirmed", str(exc))
+
+    @app.exception_handler(StorageError)
+    async def _on_storage_error(request: Request, exc: StorageError) -> JSONResponse:
+        # 503: dipendenza esterna (B2) non disponibile o malconfigurata.
+        # Il client può riprovare; non è colpa sua.
+        return _make_response(503, "storage_unavailable", "Storage backend error")
 
 
 # -----------------------------------------------------------------------------

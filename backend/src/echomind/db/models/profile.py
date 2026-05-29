@@ -50,7 +50,7 @@ class Profile(Base):
     # -------------------------------------------------------------------------
     # Primary key + FK a auth.users.id
     # -------------------------------------------------------------------------
-    # `as_uuid=True` → Python lavora con `uuid.UUID`, non con `str`.
+    # `as_uuid=True` --> Python lavora con `uuid.UUID`, non con `str`.
     # Niente `default=uuid4()`: l'ID viene SEMPRE da auth.users (Supabase),
     # mai generato lato app.
     id: Mapped[UUID] = mapped_column(
@@ -71,7 +71,7 @@ class Profile(Base):
     # -------------------------------------------------------------------------
     # Audit timestamp (server-side defaults)
     # -------------------------------------------------------------------------
-    # TIMESTAMP(timezone=True) → "TIMESTAMPTZ" in Postgres (raccomandato).
+    # TIMESTAMP(timezone=True) --> "TIMESTAMPTZ" in Postgres (raccomandato).
     # `server_default=text("NOW()")` → il DEFAULT è nel DDL; nessun bisogno
     # che Python passi un valore al INSERT.
     created_at: Mapped[datetime] = mapped_column(
@@ -91,4 +91,7 @@ class Profile(Base):
     # Repr utile per debugging
     # -------------------------------------------------------------------------
     def __repr__(self) -> str:
+        # r! alla fine del nome della variabile serve per non stampare la variabile come
+        # stringa normale, ma di usare la rappresentazione ufficiale (chiamando a sua volta
+        # il __repr__ di quella variabile).
         return f"Profile(id={self.id!r}, display_name={self.display_name!r})"
