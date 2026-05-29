@@ -158,6 +158,57 @@ class Settings(BaseSettings):
         ),
     )
 
+    # -------------------------------------------------------------------------
+    # Async jobs — Celery + RabbitMQ (broker) + Redis (result backend) — M3
+    # -------------------------------------------------------------------------
+    # NB: rabbitmq_url/redis_url sono `str`, NON AmqpDsn/RedisDsn, di proposito.
+    # I validator URL di Pydantic normalizzano il path (es. slash finale), ma
+    # per AMQP lo slash finale CODIFICA il virtual host: "amqp://.../" → vhost
+    # vuoto, "amqp://...//" → vhost "/". Normalizzarlo cambierebbe il vhost per
+    # sbaglio (footgun classico di Celery). Lasciamo la stringa intatta: kombu
+    # la parsa e fallisce in modo esplicito se è malformata.
+    rabbitmq_url: str = Field(
+        default="amqp://guest:guest@localhost:5672//",
+        description=(
+            "URL broker AMQP per Celery. Source env: RABBITMQ_URL. "
+            "Default = RabbitMQ dev locale (vhost '/' via doppio slash finale)."
+        ),
+    )
+
+    redis_url: str = Field(
+        default="redis://localhost:6379/0",
+        description="URL Redis usato come result backend Celery. Source env: REDIS_URL.",
+    )
+
+    task_max_retries: int = Field(
+        default=3,
+        ge=0,
+        description=(
+            "Retry massimi di un task prima dello stato terminale 'failed' "
+            "(che dead-lettera il messaggio nella DLQ)."
+        ),
+    )
+
+    task_retry_backoff_seconds: int = Field(
+        default=2,
+        gt=0,
+        description="Base del backoff esponenziale tra i retry (secondi): ritardo ≈ base * 2**attempt.",
+    )
+
+    task_soft_time_limit_seconds: int = Field(
+        default=300,
+        gt=0,
+        description="Soft time limit per task (secondi): oltre, Celery solleva SoftTimeLimitExceeded.",
+    )
+
+    celery_task_always_eager: bool = Field(
+        default=False,
+        description=(
+            "Se True i task girano in-process, sincroni (solo debug manuale). "
+            "I test NON lo usano: confligge con l'event loop di pytest-asyncio (vedi ADR-0005)."
+        ),
+    )
+
     @model_validator(mode="after")
     def _validate_jwt_credentials(self) -> Self:
         """Garantisce che la credential corrispondente all'algoritmo sia presente.
