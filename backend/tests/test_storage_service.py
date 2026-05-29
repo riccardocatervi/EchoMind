@@ -178,6 +178,37 @@ class TestDeleteObject:
         # Non deve sollevare
         await storage.delete_object("never-existed")
 
+    @pytest.mark.asyncio
+    async def test_delete_removes_all_versions_on_versioned_bucket(
+        self, storage: B2StorageService, s3_client: object
+    ) -> None:
+        """Su bucket con versioning, delete_object deve rimuovere TUTTE le versioni.
+
+        Senza il fix version-aware, lascerebbe delete marker + versione storica.
+        Con il fix, list_object_versions ritorna 0 dopo la delete.
+        """
+        # Abilita versioning sul bucket
+        s3_client.put_bucket_versioning(  # type: ignore[attr-defined]
+            Bucket=TEST_BUCKET,
+            VersioningConfiguration={"Status": "Enabled"},
+        )
+
+        # Carica 3 versioni successive della STESSA key
+        for i in range(3):
+            _put_object(s3_client, "versioned-key", f"content-v{i}".encode())
+
+        # Verifica pre-condizione: ci sono 3 versioni
+        versions = s3_client.list_object_versions(Bucket=TEST_BUCKET)  # type: ignore[attr-defined]
+        assert len(versions.get("Versions", [])) == 3
+
+        # Delete via il nostro service
+        await storage.delete_object("versioned-key")
+
+        # Tutte le versioni rimosse + nessun delete marker residuo
+        versions = s3_client.list_object_versions(Bucket=TEST_BUCKET)  # type: ignore[attr-defined]
+        residual = len(versions.get("Versions", [])) + len(versions.get("DeleteMarkers", []))
+        assert residual == 0, f"Attese 0 versioni residue, trovate {residual}"
+
 
 # =============================================================================
 # from_settings: validazione configurazione

@@ -214,21 +214,53 @@ class B2StorageService:
     # DELETE
     # -------------------------------------------------------------------------
     async def delete_object(self, key: str) -> None:
-        """Elimina l'object. Idempotente: nessun errore se non esiste.
+        """Hard delete: rimuove tutte le versioni e i delete markers per la key.
 
-        S3-compatible: DELETE su key inesistente ritorna 204, non 404.
-        Sicuro chiamarlo due volte.
+        Su bucket con versioning attivo (default di B2 e di molti S3-compatible
+        creati via dashboard), una DELETE standard piazza solo un delete marker
+        ma lascia la versione precedente. Per garantire un vero hard-delete
+        immediato, qui enumeriamo tutte le versioni associate alla key ed
+        emettiamo una DELETE esplicita per ciascuna.
+
+        Compatibile anche con bucket versioning-off: in quel caso
+        list_object_versions ritorna una sola versione con VersionId="null"
+        (sintassi S3 standard) e il loop la cancella correttamente.
+
+        Idempotente: nessun errore se la key non esiste (la lista e' vuota e
+        il loop non itera). Sicuro chiamarlo due volte.
         """
         try:
-            await asyncio.to_thread(
-                self._client.delete_object,
-                Bucket=self._bucket,
-                Key=key,
-            )
+            await asyncio.to_thread(self._hard_delete_all_versions, key)
         except ClientError as exc:
-            # Anche se l'oggetto non c'è, alcuni S3-compatible danno 204 → nessun errore.
-            # Però se per qualche motivo solleva, qui mappiamo a domain errors.
             self._raise_domain_error(exc, key)
+
+    def _hard_delete_all_versions(self, key: str) -> None:
+        """Step sincrono di delete_object (chiamato via asyncio.to_thread).
+
+        Iterazione con paginator: robusto a bucket con molte versioni
+        accumulate (es. retry-on-failure ripetuti). Costo: 1 round-trip
+        list + N round-trip delete (uno per versione).
+        """
+        paginator = self._client.get_paginator("list_object_versions")
+        for page in paginator.paginate(Bucket=self._bucket, Prefix=key):
+            # Prefix=key filtra ma puo' matchare key simili (es. "abc" -> "abc1").
+            # Confrontiamo l'uguaglianza esatta per sicurezza.
+            for version in page.get("Versions", []):
+                if version["Key"] != key:
+                    continue
+                self._client.delete_object(
+                    Bucket=self._bucket,
+                    Key=key,
+                    VersionId=version["VersionId"],
+                )
+            for marker in page.get("DeleteMarkers", []):
+                if marker["Key"] != key:
+                    continue
+                self._client.delete_object(
+                    Bucket=self._bucket,
+                    Key=key,
+                    VersionId=marker["VersionId"],
+                )
 
     # -------------------------------------------------------------------------
     # Helper interno: mappa errori boto3 → domain errors
