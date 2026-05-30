@@ -22,6 +22,7 @@ Config di affidabilità:
 from __future__ import annotations
 
 from celery import Celery
+from celery.signals import worker_ready
 from kombu import Exchange, Queue
 
 from echomind.core.config import Settings, get_settings
@@ -107,3 +108,19 @@ def make_celery(settings: Settings) -> Celery:
 # Istanza module-level: usata dal CLI del worker e importata dall'API per
 # l'enqueue. Costruita con i Settings reali (get_settings() è cachato).
 celery_app = make_celery(get_settings())
+
+
+@worker_ready.connect  # type: ignore[untyped-decorator]
+def _ensure_dead_letter_topology(**_kwargs: object) -> None:
+    """Dichiara DLX exchange + dead-letter queue + binding all'avvio del worker.
+
+    Celery dichiara solo le code che CONSUMA (es. -Q echomind.default). La coda
+    echomind.dead non è consumata da nessuno: senza questa dichiarazione
+    esplicita l'exchange echomind.dlx non esisterebbe e i messaggi dead-letterati
+    da echomind.default verrebbero SCARTATI invece di finire in echomind.dead.
+    Dichiarare la Queue crea exchange + coda + binding in un colpo solo.
+    """
+    dlx = Exchange(DEAD_LETTER_EXCHANGE, type="direct")
+    dead_queue = Queue(DEAD_LETTER_QUEUE, exchange=dlx, routing_key=DEAD_LETTER_ROUTING_KEY)
+    with celery_app.connection_for_write() as conn:
+        dead_queue.bind(conn.default_channel).declare()
