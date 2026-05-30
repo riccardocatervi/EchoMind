@@ -203,3 +203,40 @@ def test_max_upload_size_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> No
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+# =============================================================================
+# Async jobs (M3): Celery + RabbitMQ + Redis
+# =============================================================================
+def test_async_jobs_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Senza env dedicate, i parametri dei job hanno default sensati (dev locale)."""
+    for key, value in VALID_ENV.items():
+        monkeypatch.setenv(key, value)
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert settings.rabbitmq_url.startswith("amqp://")
+    assert settings.redis_url.startswith("redis://")
+    assert settings.task_max_retries == 3
+    assert settings.task_retry_backoff_seconds == 2
+    assert settings.task_soft_time_limit_seconds == 300
+    assert settings.celery_task_always_eager is False
+
+
+def test_task_max_retries_rejects_negative(monkeypatch: pytest.MonkeyPatch) -> None:
+    """task_max_retries >= 0 (un valore negativo non ha senso)."""
+    for key, value in VALID_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("TASK_MAX_RETRIES", "-1")
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_task_retry_backoff_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> None:
+    """La base del backoff deve essere strettamente positiva."""
+    for key, value in VALID_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("TASK_RETRY_BACKOFF_SECONDS", "0")
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)  # type: ignore[call-arg]
