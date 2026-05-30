@@ -1,10 +1,10 @@
-"""Modello SQLAlchemy `Task` — job asincrono eseguito da un worker Celery.
+"""Modello SQLAlchemy `Task` -- job asincrono eseguito da un worker Celery.
 
 Lifecycle:
-    POST /tasks/echo   →  riga creata con status='queued' + enqueue su RabbitMQ
-    worker prende      →  status='running' (started_at)
-    worker completa    →  status='succeeded' (result, finished_at)
-    worker fallisce N  →  retry con backoff; esauriti → status='failed' (error,
+    POST /tasks/echo   -->  riga creata con status='queued' + enqueue su RabbitMQ
+    worker prende      -->  status='running' (started_at)
+    worker completa    -->  status='succeeded' (result, finished_at)
+    worker fallisce N  -->  retry con backoff; esauriti --> status='failed' (error,
                           finished_at) + messaggio dead-letterato nella DLQ
 
 La verità di dominio sullo stato vive QUI (Postgres), non nel result backend
@@ -34,7 +34,7 @@ from echomind.db.base import Base
 class TaskStatus(enum.StrEnum):
     """Stati del lifecycle di un task asincrono.
 
-    `StrEnum` (Python 3.11+): i valori sono stringhe native → serializzazione
+    `StrEnum` (Python 3.11+): i valori sono stringhe native --> serializzazione
     JSON gratuita (FastAPI/Pydantic li trattano come str).
     """
 
@@ -105,7 +105,7 @@ class Task(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,
-        default=dict,  # callable → nuovo dict per insert, niente mutable condiviso
+        default=dict,  # callable --> nuovo dict per insert, niente mutable condiviso
         server_default=text("'{}'::jsonb"),
         comment="Input del task.",
     )

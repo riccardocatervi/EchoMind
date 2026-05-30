@@ -1,21 +1,21 @@
-"""Task 'echo' — il task fittizio di M3.
+"""Task 'echo' -- il task fittizio di M3.
 
-Dimostra l'intera pipeline asincrona end-to-end: enqueue → broker → worker →
+Dimostra l'intera pipeline asincrona end-to-end: enqueue --> broker --> worker -->
 stato persistito in DB. Con payload `{"fail": true}` esercita il percorso di
-errore: retry con backoff esponenziale → stato terminale 'failed' → dead-letter.
+errore: retry con backoff esponenziale --> stato terminale 'failed' --> dead-letter.
 
 Architettura in DUE livelli (deliberata):
-- `run_echo()`  — coroutine ASYNC: tutta la logica di dominio (transizioni di
+- `run_echo()`  -- coroutine ASYNC: tutta la logica di dominio (transizioni di
   stato in DB). Pura e testabile in isolamento, SENZA Celery né event loop
   annidati (i test la chiamano direttamente).
-- `echo_task()` — wrapper SINCRONO registrato su Celery: traduce l'esito di
+- `echo_task()` -- wrapper SINCRONO registrato su Celery: traduce l'esito di
   `run_echo` nelle primitive di controllo di Celery (`self.retry`, `Reject`).
-  Queste vivono qui, nel contesto sincrono dove Celery se le aspetta — non
+  Queste vivono qui, nel contesto sincrono dove Celery se le aspetta -- non
   dentro la coroutine.
 
 Conteggio tentativi: `self.request.retries` è 0-based (0 alla prima esecuzione).
 Con `task_max_retries=3` il task fallisce ai tentativi 1, 2 e 3; il 3° è
-terminale (→ DLQ). Quindi "fallisce 3 volte → dead-letter".
+terminale (--> DLQ). Quindi "fallisce 3 volte --> dead-letter".
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ class EchoOutcome:
     - succeeded:       il task è completato; `result` contiene l'output.
     - retry:           fallimento non terminale; il wrapper richiama self.retry.
     - failed_terminal: fallimento terminale (DB già marcato 'failed'); il
-                       wrapper fa Reject(requeue=False) → dead-letter queue.
+                       wrapper fa Reject(requeue=False) --> dead-letter queue.
     - already_done:    riga già in stato terminale (o assente): no-op idempotente.
     """
 
@@ -145,7 +145,7 @@ def _retry_countdown(attempt: int, *, base: int) -> int:
 def echo_task(self: Task, task_id: str, message: str, fail: bool = False) -> dict[str, Any] | None:
     """Wrapper sincrono registrato su Celery. Delega a `run_echo` e traduce l'esito.
 
-    `bind=True` → `self` è l'istanza del task (per self.request.retries / self.retry).
+    `bind=True` --> `self` è l'istanza del task (per self.request.retries / self.retry).
     """
     settings = get_settings()
     attempt: int = self.request.retries  # 0 alla prima esecuzione
@@ -174,7 +174,7 @@ def echo_task(self: Task, task_id: str, message: str, fail: bool = False) -> dic
         raise self.retry(exc=EchoTaskError(outcome.error or "retry"), countdown=countdown)
 
     if outcome.kind == "failed_terminal":
-        # Reject(requeue=False) → basic.reject sul broker → x-dead-letter-exchange
+        # Reject(requeue=False) --> basic.reject sul broker --> x-dead-letter-exchange
         # instrada il messaggio nella coda echomind.dead. Il DB è GIÀ 'failed'.
         log.error("echo_task_dead_lettered", task_id=task_id)
         raise Reject(requeue=False)

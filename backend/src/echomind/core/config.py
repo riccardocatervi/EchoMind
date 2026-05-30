@@ -163,8 +163,8 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # NB: rabbitmq_url/redis_url sono `str`, NON AmqpDsn/RedisDsn, di proposito.
     # I validator URL di Pydantic normalizzano il path (es. slash finale), ma
-    # per AMQP lo slash finale CODIFICA il virtual host: "amqp://.../" → vhost
-    # vuoto, "amqp://...//" → vhost "/". Normalizzarlo cambierebbe il vhost per
+    # per AMQP lo slash finale CODIFICA il virtual host: "amqp://.../" --> vhost
+    # vuoto, "amqp://...//" --> vhost "/". Normalizzarlo cambierebbe il vhost per
     # sbaglio (footgun classico di Celery). Lasciamo la stringa intatta: kombu
     # la parsa e fallisce in modo esplicito se è malformata.
     rabbitmq_url: str = Field(

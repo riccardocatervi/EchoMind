@@ -8,13 +8,13 @@ Topologia delle code (vedi ADR-0005):
   così i messaggi REJECTED (basic.reject/nack con requeue=false), scaduti o in
   overflow vengono ripubblicati sulla dead-letter exchange.
 - `echomind.dead`: dead-letter queue. Vi atterrano i task che hanno esaurito i
-  retry — l'echo task, sul fallimento terminale, fa `raise Reject(requeue=False)`.
+  retry -- l'echo task, sul fallimento terminale, fa `raise Reject(requeue=False)`.
   Ispezionabile dalla management UI di RabbitMQ.
 
 Config di affidabilità:
 - task_acks_late=True: il messaggio è ack-ato DOPO il completamento, non alla
   presa. Se il worker muore a metà, RabbitMQ riconsegna (at-least-once delivery).
-- task_reject_on_worker_lost=True: worker ucciso → reject → dead-letter.
+- task_reject_on_worker_lost=True: worker ucciso --> reject --> dead-letter.
 - worker_prefetch_multiplier=1: un messaggio alla volta per worker (fairness).
 - serializzazione SOLO json: mai pickle (un payload pickle nella coda = RCE).
 """
@@ -41,7 +41,7 @@ def _build_queues() -> tuple[Queue, ...]:
     `queue_arguments` viene passato a RabbitMQ alla dichiarazione della coda.
     ATTENZIONE: se la coda esiste già con argomenti diversi, RabbitMQ rifiuta la
     ridichiarazione (PRECONDITION_FAILED 406). Cambiare questi argomenti richiede
-    di eliminare prima la coda vecchia (vedi README → troubleshooting worker).
+    di eliminare prima la coda vecchia (vedi README --> troubleshooting worker).
     """
     work_exchange = Exchange(WORK_EXCHANGE, type="direct")
     dlx = Exchange(DEAD_LETTER_EXCHANGE, type="direct")

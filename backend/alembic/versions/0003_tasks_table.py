@@ -14,11 +14,11 @@ Crea l'infrastruttura di persistenza per i job asincroni (M3):
   4. Trigger updated_at (riusa public.touch_updated_at della 0001)
   5. RLS abilitata + FORCE + 2 policy (SELECT, INSERT)
      Lifecycle: l'utente crea (enqueue) e legge i propri task; gli UPDATE di
-     stato li fa il worker come ruolo di sistema (superuser → bypassa RLS),
+     stato li fa il worker come ruolo di sistema (superuser --> bypassa RLS),
      quindi non servono policy UPDATE/DELETE lato utente in M3.
 
 Nota su `task_type`: TEXT e non ENUM. L'insieme dei tipi cresce a ogni
-milestone (echo → transcribe → extract → ...): un TEXT con validazione
+milestone (echo --> transcribe --> extract --> ...): un TEXT con validazione
 applicativa (StrEnum) è più comodo di ripetuti ALTER TYPE ADD VALUE.
 `status` resta ENUM perché è un insieme piccolo e stabile.
 """
@@ -63,7 +63,7 @@ def upgrade() -> None:
             sa.dialects.postgresql.UUID(as_uuid=True),
             sa.ForeignKey("public.profiles.id", ondelete="CASCADE"),
             nullable=False,
-            comment="FK a public.profiles(id). CASCADE: profile eliminato → suoi task via.",
+            comment="FK a public.profiles(id). CASCADE: profile eliminato --> suoi task via.",
         ),
         sa.Column(
             "task_type",
@@ -83,7 +83,7 @@ def upgrade() -> None:
             ),
             nullable=False,
             server_default=sa.text("'queued'::task_status"),
-            comment="Lifecycle: queued → running → (succeeded | failed).",
+            comment="Lifecycle: queued --> running --> (succeeded | failed).",
         ),
         sa.Column(
             "payload",
@@ -143,7 +143,7 @@ def upgrade() -> None:
     # 3. Indice composito per "lista mia ordinata dal più recente"
     # -------------------------------------------------------------------------
     # Stesso ragionamento di documents: owner_id (filtro) + created_at DESC
-    # (sort) materializzati nel B-tree → niente sort separato.
+    # (sort) materializzati nel B-tree --> niente sort separato.
     op.create_index(
         "ix_tasks_owner_id_created_at",
         "tasks",
@@ -203,5 +203,5 @@ def downgrade() -> None:
 
     op.execute("DROP TYPE IF EXISTS task_status")
 
-    # NB: la funzione public.touch_updated_at NON viene droppata qui — è
+    # NB: la funzione public.touch_updated_at NON viene droppata qui -- è
     # condivisa con profiles (0001) e documents (0002).

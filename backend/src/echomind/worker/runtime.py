@@ -1,4 +1,4 @@
-"""Worker runtime: engine DB dedicato + ponte sync→async.
+"""Worker runtime: engine DB dedicato + ponte sync-->async.
 
 Il worker Celery (prefork) è un processo SEPARATO dall'API e SINCRONO: non
 condivide `app.state` né l'engine dell'app FastAPI. Qui forniamo:
@@ -11,12 +11,12 @@ Perché `NullPool`:
     esplode ("attached to a different loop"). NullPool non trattiene connessioni
     tra un uso e l'altro: ne apre una fresca per ogni operazione, sul loop
     corrente, e la chiude. Costo: una connessione nuova per task (accettabile al
-    nostro volume). Beneficio: zero problemi di affinità loop↔connessione.
+    nostro volume). Beneficio: zero problemi di affinità loop<->connessione.
 
 Perché lazy / post-fork:
     In prefork il padre forka i figli DOPO l'import del modulo. Creare l'engine
     all'import (nel padre) farebbe ereditare ai figli strutture asyncio/socket
-    → corruzione. Creandolo al primo task (nel figlio già forkato) lo evitiamo.
+    --> corruzione. Creandolo al primo task (nel figlio già forkato) lo evitiamo.
 """
 
 from __future__ import annotations

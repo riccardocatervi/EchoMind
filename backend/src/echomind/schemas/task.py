@@ -1,9 +1,9 @@
 """Pydantic schemas per la risorsa Task (job asincroni).
 
 Convenzione naming (CQS):
-- `EchoTaskCreate`       → ciò che l'API ACCETTA (input POST /tasks/echo)
-- `TaskEnqueuedResponse` → output di POST /tasks/echo (202 Accepted)
-- `TaskRead`             → ciò che l'API RITORNA (GET /tasks, GET /tasks/{id})
+- `EchoTaskCreate`       --> ciò che l'API ACCETTA (input POST /tasks/echo)
+- `TaskEnqueuedResponse` --> output di POST /tasks/echo (202 Accepted)
+- `TaskRead`             --> ciò che l'API RITORNA (GET /tasks, GET /tasks/{id})
 """
 
 from __future__ import annotations
@@ -31,12 +31,12 @@ class EchoTaskCreate(BaseModel):
         default=False,
         description=(
             "Se True, il task fallisce di proposito ad ogni tentativo: esercita il "
-            "percorso retry → stato terminale 'failed' → dead-letter queue. "
+            "percorso retry --> stato terminale 'failed' --> dead-letter queue. "
             "Serve per demo e test del path di errore."
         ),
     )
 
-    # extra='forbid': un campo di troppo (typo del client) → 422 esplicito.
+    # extra='forbid': un campo di troppo (typo del client) --> 422 esplicito.
     model_config = ConfigDict(extra="forbid")
 
 

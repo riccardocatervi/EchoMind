@@ -1,10 +1,10 @@
-"""Repository per la risorsa Task — query CRUD primitive sulla tabella `tasks`.
+"""Repository per la risorsa Task -- query CRUD primitive sulla tabella `tasks`.
 
 Particolarità: questo repository è usato da DUE chiamanti con sessioni diverse:
-- **API** (enqueue/list/get): sessione RLS-bound → le query vedono solo i task
+- **API** (enqueue/list/get): sessione RLS-bound --> le query vedono solo i task
   dell'utente corrente, e l'INSERT passa la policy `task_insert_own`.
 - **Worker** (mark_*): sessione di SISTEMA (ruolo `echomind` superuser, che
-  bypassa RLS) → può aggiornare lo stato di qualunque riga, perché il worker è
+  bypassa RLS) --> può aggiornare lo stato di qualunque riga, perché il worker è
   un componente fidato che non agisce "per conto" di un utente.
 
 Il repository non conosce la differenza: riceve la sessione che gli passano.
@@ -79,7 +79,7 @@ class TaskRepository:
     # WRITE (transizioni di stato, lato worker con sessione di sistema)
     # -------------------------------------------------------------------------
     async def mark_running(self, task: Task, *, retries: int) -> Task:
-        """Transizione → 'running'. Registra started_at e il contatore tentativi."""
+        """Transizione --> 'running'. Registra started_at e il contatore tentativi."""
         task.status = TaskStatus.RUNNING
         task.retries = retries
         task.started_at = datetime.now(UTC)
@@ -88,7 +88,7 @@ class TaskRepository:
         return task
 
     async def mark_succeeded(self, task: Task, *, result: dict[str, Any]) -> Task:
-        """Transizione terminale → 'succeeded'. Salva il result e finished_at."""
+        """Transizione terminale --> 'succeeded'. Salva il result e finished_at."""
         task.status = TaskStatus.SUCCEEDED
         task.result = result
         task.error = None
@@ -98,7 +98,7 @@ class TaskRepository:
         return task
 
     async def mark_failed(self, task: Task, *, error: str) -> Task:
-        """Transizione terminale → 'failed'. Salva il messaggio d'errore e finished_at."""
+        """Transizione terminale --> 'failed'. Salva il messaggio d'errore e finished_at."""
         task.status = TaskStatus.FAILED
         task.error = error
         task.finished_at = datetime.now(UTC)
