@@ -11,5 +11,13 @@ evitare cicli import.
 
 from echomind.db.models.document import Document, DocumentStatus
 from echomind.db.models.profile import Profile
+from echomind.db.models.task import Task, TaskStatus, TaskType
 
-__all__ = ["Document", "DocumentStatus", "Profile"]
+__all__ = [
+    "Document",
+    "DocumentStatus",
+    "Profile",
+    "Task",
+    "TaskStatus",
+    "TaskType",
+]
