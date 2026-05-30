@@ -37,6 +37,8 @@ from echomind.services import (
     DocumentAlreadyConfirmedError,
     DocumentNotFoundError,
     StorageError,
+    TaskEnqueueError,
+    TaskNotFoundError,
 )
 
 
@@ -224,6 +226,20 @@ def _register_exception_handlers(app: FastAPI) -> None:
         # 503: dipendenza esterna (B2) non disponibile o malconfigurata.
         # Il client può riprovare; non è colpa sua.
         return _make_response(503, "storage_unavailable", "Storage backend error")
+
+    # -------------------------------------------------------------------------
+    # Errori di dominio Task (M3)
+    # -------------------------------------------------------------------------
+    @app.exception_handler(TaskNotFoundError)
+    async def _on_task_not_found(request: Request, exc: TaskNotFoundError) -> JSONResponse:
+        # 404 anche se il task esiste ma e' di un altro utente (RLS lo nasconde
+        # --> repository ritorna None). Indistinguibilita' by design.
+        return _make_response(404, "task_not_found", "Task not found")
+
+    @app.exception_handler(TaskEnqueueError)
+    async def _on_task_enqueue_error(request: Request, exc: TaskEnqueueError) -> JSONResponse:
+        # 503: il broker (RabbitMQ) non e' raggiungibile. Il client puo' riprovare.
+        return _make_response(503, "task_enqueue_failed", "Task queue backend error")
 
 
 # -----------------------------------------------------------------------------

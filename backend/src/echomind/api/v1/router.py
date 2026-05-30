@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from echomind.api.v1 import documents, health, profiles, users
+from echomind.api.v1 import documents, health, profiles, tasks, users
 
 router = APIRouter(prefix="/api/v1")
 
@@ -17,3 +17,4 @@ router.include_router(health.router)
 router.include_router(users.router)
 router.include_router(profiles.router)
 router.include_router(documents.router)
+router.include_router(tasks.router)

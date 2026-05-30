@@ -22,6 +22,12 @@ from echomind.services.storage import (
     StorageError,
     StorageObjectNotFoundError,
 )
+from echomind.services.task import (
+    TaskEnqueueError,
+    TaskError,
+    TaskNotFoundError,
+    TaskService,
+)
 
 __all__ = [
     "B2StorageService",
@@ -33,4 +39,8 @@ __all__ = [
     "ProfileService",
     "StorageError",
     "StorageObjectNotFoundError",
+    "TaskEnqueueError",
+    "TaskError",
+    "TaskNotFoundError",
+    "TaskService",
 ]
