@@ -30,7 +30,7 @@ endif
 .PHONY: help install dev verify lint format typecheck test test-cov \
         infra-up infra-down infra-logs infra-ps infra-reset \
         precommit-install precommit-run check-env clean \
-        migrate migrate-down migration migrate-history serve
+        migrate migrate-down migration migrate-history serve worker
 
 # -----------------------------------------------------------------------------
 # Help auto-generato
@@ -146,6 +146,13 @@ migration: ## Crea una nuova migration vuota (uso: make migration MSG="add_email
 serve: ## Avvia uvicorn con hot-reload (Ctrl+C per fermare)
 	@printf "$(BLUE)-> uvicorn echomind.main:create_app --factory --reload$(RESET)\n"
 	@cd backend && uv run uvicorn echomind.main:create_app --factory --reload --host 0.0.0.0 --port 8000
+
+# -----------------------------------------------------------------------------
+# Worker asincrono (Celery) -- M3
+# -----------------------------------------------------------------------------
+worker: ## Avvia il worker Celery (consuma la coda echomind.default)
+	@printf "$(BLUE)-> celery worker -Q echomind.default$(RESET)\n"
+	@cd backend && uv run celery -A echomind.worker.celery_app:celery_app worker -l info -Q echomind.default --concurrency=2
 
 # -----------------------------------------------------------------------------
 # Pulizia
