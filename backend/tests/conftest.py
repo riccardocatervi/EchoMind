@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid4
 
 import httpx
@@ -26,7 +27,7 @@ import pytest
 import pytest_asyncio
 from pydantic import SecretStr
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from echomind.core.config import Settings
 from echomind.db.session import create_engine, create_session_maker
@@ -227,3 +228,33 @@ async def s3_mock_storage(app: object) -> AsyncIterator[B2StorageService]:
             yield storage
         finally:
             app.state.storage = original  # type: ignore[attr-defined]
+
+
+# -----------------------------------------------------------------------------
+# Async jobs (M3): stub dell'enqueue Celery + sessionmaker per i test del worker
+# -----------------------------------------------------------------------------
+@pytest.fixture
+def captured_enqueues(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    """Patcha `echo_task.apply_async`: nessun broker reale nei test.
+
+    Cattura gli argomenti di ogni enqueue (per le assert). La pipeline reale
+    (worker che consuma da RabbitMQ) e' verificata nello smoke test locale,
+    non qui -- eager mode confliggerebbe con l'event loop di pytest-asyncio.
+    """
+    from echomind.worker.tasks.echo import echo_task
+
+    calls: list[dict[str, Any]] = []
+
+    def _fake_apply_async(*args: Any, **kwargs: Any) -> None:
+        calls.append({"args": args, "kwargs": kwargs})
+
+    monkeypatch.setattr(echo_task, "apply_async", _fake_apply_async)
+    return calls
+
+
+@pytest.fixture
+def db_session_maker(app: object) -> async_sessionmaker[AsyncSession]:
+    """Sessionmaker dell'app: usato per invocare `run_echo` direttamente nei
+    test del worker, nello stesso event loop del test (niente Celery/asyncio.run).
+    """
+    return app.state.session_maker  # type: ignore[attr-defined,no-any-return]

@@ -57,9 +57,9 @@ class DocumentAlreadyConfirmedError(DocumentError):
 # MIME equivalence map
 # -----------------------------------------------------------------------------
 # Per ogni MIME dichiarato dal client, il set di MIME "accettabili" che magic
-# può detectare e confermarlo. Se il MIME rilevato NON è nel set → mismatch.
+# può detectare e confermarlo. Se il MIME rilevato NON è nel set --> mismatch.
 #
-# Lessons learned (commenti incolla durante validazione manuale):
+# Lessons learned:
 # - DOCX è uno ZIP archive con XML dentro: magic ritorna 'application/zip'
 # - WAV ha alias storici: audio/wav, audio/x-wav, audio/vnd.wave
 # - M4A condivide il container con MP4 video: magic può ritornare 'video/mp4'
@@ -197,7 +197,7 @@ class DocumentService:
             )
             return await self._repository.mark_failed(document, "size_mismatch")
 
-        # 2. Scarica i primi 256 byte → magic detection.
+        # 2. Scarica i primi 256 byte --> magic detection.
         head_bytes = await self._storage.get_object_range(
             document.storage_key,
             start=0,

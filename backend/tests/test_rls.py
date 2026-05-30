@@ -19,6 +19,7 @@ PostgreSQL si oppone in modo categorico.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from typing import Any
 from uuid import UUID, uuid4
 
 import httpx
@@ -302,3 +303,55 @@ async def test_alice_cannot_delete_bobs_document(
         {"id": bob_doc_id},
     )
     assert result.scalar_one() == 1
+
+
+# =============================================================================
+# RLS su tasks (M3)
+# =============================================================================
+@pytest.mark.asyncio
+async def test_alice_cannot_see_bobs_tasks(
+    client: httpx.AsyncClient,
+    auth_headers: Callable[[UUID | None], dict[str, str]],
+    seed_auth_user: Callable[[UUID], Awaitable[None]],
+    captured_enqueues: list[dict[str, Any]],
+) -> None:
+    """Alice accoda 2 task, Bob 1 --> GET /tasks di ciascuno vede solo i propri."""
+    alice_id = uuid4()
+    bob_id = uuid4()
+    await seed_auth_user(alice_id)
+    await seed_auth_user(bob_id)
+    alice_headers = auth_headers(alice_id)
+    bob_headers = auth_headers(bob_id)
+
+    for i in range(2):
+        await client.post("/api/v1/tasks/echo", headers=alice_headers, json={"message": f"a{i}"})
+    await client.post("/api/v1/tasks/echo", headers=bob_headers, json={"message": "b"})
+
+    alice_list = await client.get("/api/v1/tasks", headers=alice_headers)
+    bob_list = await client.get("/api/v1/tasks", headers=bob_headers)
+    assert len(alice_list.json()) == 2
+    assert len(bob_list.json()) == 1
+    assert all(t["owner_id"] == str(alice_id) for t in alice_list.json())
+    assert all(t["owner_id"] == str(bob_id) for t in bob_list.json())
+
+
+@pytest.mark.asyncio
+async def test_alice_cannot_get_bobs_task_by_id(
+    client: httpx.AsyncClient,
+    auth_headers: Callable[[UUID | None], dict[str, str]],
+    seed_auth_user: Callable[[UUID], Awaitable[None]],
+    captured_enqueues: list[dict[str, Any]],
+) -> None:
+    """Anche con l'URL giusto, Alice riceve 404 sul task di Bob (RLS lo nasconde)."""
+    alice_id = uuid4()
+    bob_id = uuid4()
+    await seed_auth_user(alice_id)
+    await seed_auth_user(bob_id)
+
+    enq = await client.post(
+        "/api/v1/tasks/echo", headers=auth_headers(bob_id), json={"message": "secret"}
+    )
+    bob_task_id = enq.json()["task_id"]
+
+    response = await client.get(f"/api/v1/tasks/{bob_task_id}", headers=auth_headers(alice_id))
+    assert response.status_code == 404

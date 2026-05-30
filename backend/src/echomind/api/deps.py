@@ -31,13 +31,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from echomind.core.config import Settings
 from echomind.core.security import JWTClaims, decode_and_validate, extract_bearer_token
-from echomind.db.repositories import DocumentRepository, ProfileRepository
+from echomind.db.repositories import DocumentRepository, ProfileRepository, TaskRepository
 from echomind.db.session import set_rls_user
 from echomind.services import (
     B2StorageService,
     DocumentService,
     ProfileService,
     StorageError,
+    TaskService,
 )
 
 
@@ -212,3 +213,26 @@ async def get_document_service(
 
 
 DocumentServiceDep = Annotated[DocumentService, Depends(get_document_service)]
+
+
+async def get_task_service(
+    user_id: UserIdDep,
+    session: SessionDep,
+    session_maker: SessionMakerDep,
+) -> TaskService:
+    """Costruisce un TaskService con la sessione RLS-bound dell'utente.
+
+    Come per i documents, garantiamo il profile (just-in-time provisioning):
+    `tasks.owner_id` ha FK a `profiles(id)`, quindi senza il profile l'INSERT
+    fallirebbe. Stesso pattern riusabile per ogni risorsa owned-by-user.
+    """
+    profile_service = ProfileService(
+        repository=ProfileRepository(session),
+        system_session_maker=session_maker,
+    )
+    await profile_service.get_or_create(user_id)
+
+    return TaskService(repository=TaskRepository(session))
+
+
+TaskServiceDep = Annotated[TaskService, Depends(get_task_service)]

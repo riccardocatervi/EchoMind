@@ -53,6 +53,12 @@ dependencies = [
     #   - macOS:  brew install libmagic
     #   - Ubuntu: apt install libmagic1
     "python-magic>=0.4.27",
+
+    # --- Async job queue (M3: Celery con broker RabbitMQ + backend Redis) ---
+    # L'extra [redis] aggiunge il client redis per il result backend. Il broker
+    # RabbitMQ è coperto da kombu/py-amqp, già dipendenze transitive di Celery.
+    # Trascina anche billiard (prefork), vine, amqp.
+    "celery[redis]>=5.4.0",
 ]
 
 [project.urls]
@@ -152,6 +158,12 @@ pretty = true
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
+
+# Celery e kombu non spediscono stub di tipo completi: silenziamo solo
+# "import-untyped" per questi pacchetti, senza allentare lo strict altrove.
+[[tool.mypy.overrides]]
+module = ["celery.*", "kombu.*"]
+ignore_missing_imports = true
 
 # =============================================================================
 # PYTEST
