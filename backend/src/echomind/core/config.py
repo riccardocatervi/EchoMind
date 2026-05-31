@@ -209,6 +209,51 @@ class Settings(BaseSettings):
         ),
     )
 
+    # -------------------------------------------------------------------------
+    # Media processing — OpenAI Whisper (trascrizione audio) — M4
+    # -------------------------------------------------------------------------
+    # openai_api_key e' opzionale come le credenziali B2: in dev/test i worker
+    # non girano e i test mockano il transcriber. Diventa necessaria solo quando
+    # il worker trascrive davvero un audio --> get_worker_transcriber() solleva
+    # un errore esplicito se manca. Source: platform.openai.com/api-keys.
+    openai_api_key: SecretStr | None = Field(
+        default=None,
+        description=(
+            "API key OpenAI per Whisper. Source env: OPENAI_API_KEY. Opzionale: il "
+            "worker fallisce in modo esplicito se assente quando serve la trascrizione."
+        ),
+    )
+
+    openai_org_id: str | None = Field(
+        default=None,
+        description="Organization ID OpenAI (opzionale). Source env: OPENAI_ORG_ID.",
+    )
+
+    whisper_model: str = Field(
+        default="whisper-1",
+        description=(
+            "Modello di trascrizione OpenAI. Default 'whisper-1' (stabile, supporta audio lunghi)."
+        ),
+    )
+
+    whisper_max_chunk_bytes: int = Field(
+        default=24 * 1024 * 1024,  # 24 MB
+        gt=0,
+        description=(
+            "Soglia di dimensione oltre la quale l'audio viene spezzato in chunk prima di "
+            "Whisper. Sotto il limite hard di 25 MB di Whisper, con margine."
+        ),
+    )
+
+    transcription_soft_time_limit_seconds: int = Field(
+        default=1800,  # 30 minuti
+        gt=0,
+        description=(
+            "Soft time limit dedicato al task di trascrizione (secondi). Piu' alto del "
+            "task_soft_time_limit_seconds generico: l'audio lungo (chunked) richiede minuti."
+        ),
+    )
+
     @model_validator(mode="after")
     def _validate_jwt_credentials(self) -> Self:
         """Garantisce che la credential corrispondente all'algoritmo sia presente.
@@ -261,7 +306,7 @@ class Settings(BaseSettings):
         env_file=("../.env", ".env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
-        extra="ignore",  # ignora variabili extra in .env (es. NEO4J_*, OPENAI_*: arrivano dopo)
+        extra="ignore",  # ignora variabili extra in .env (es. NEO4J_*, ANTHROPIC_*: arrivano dopo)
     )
 
 
