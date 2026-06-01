@@ -10,6 +10,7 @@ Servizio Python (FastAPI + Celery) per estrazione e gestione del knowledge graph
 - [`uv`](https://docs.astral.sh/uv/) >= 0.4
 - Docker Desktop con Compose v2 (per Postgres + RabbitMQ + Redis locali)
 - `libmagic` a livello di sistema (MIME detection M2): macOS `brew install libmagic`, Ubuntu `apt install libmagic1`
+- `ffmpeg` a livello di sistema (chunking audio M4): macOS `brew install ffmpeg`, Ubuntu `apt install ffmpeg`
 
 ## Quick start (sviluppo)
 
@@ -53,6 +54,10 @@ Endpoint disponibili:
 - `GET  /api/v1/tasks` -- lista paginata dei propri task (RLS-filtered)
 - `GET  /api/v1/tasks/{id}` -- stato/dettaglio di un task
 
+**Media Processing (M4)**
+- `POST /api/v1/documents/{id}/confirm` -- oltre a validare il MIME, accoda automaticamente la trascrizione del documento
+- `GET  /api/v1/documents/{id}/transcript` -- testo estratto/trascritto (404 finche' non pronto; RLS-filtered)
+
 Documentazione interattiva: `http://localhost:8000/docs` (Swagger UI).
 
 ## Variabili d'ambiente
@@ -74,8 +79,12 @@ Tutte le variabili sono tipizzate da Pydantic Settings (`core/config.py`). Valid
 | `TASK_MAX_RETRIES` | Tentativi prima dello stato terminale `failed` (poi dead-letter). Default 3 |
 | `TASK_RETRY_BACKOFF_SECONDS` | Base del backoff esponenziale tra i retry. Default 2 |
 | `TASK_SOFT_TIME_LIMIT_SECONDS` | Soft time limit per task. Default 300 |
+| `OPENAI_API_KEY`, `OPENAI_ORG_ID` | Whisper (trascrizione audio M4). Opzionali: solo i task su audio le richiedono, i documenti no. Vedi [ADR-0006](../docs/adr/0006-media-processing.md) |
+| `WHISPER_MODEL` | Modello di trascrizione OpenAI. Default `whisper-1` |
+| `WHISPER_MAX_CHUNK_BYTES` | Soglia di chunking audio, sotto il limite 25 MB di Whisper. Default 24 MB |
+| `TRANSCRIPTION_SOFT_TIME_LIMIT_SECONDS` | Soft time limit del task di trascrizione. Default 1800 (30 min) |
 
-Le altre (`SUPABASE_URL`, `NEO4J_*`, `OPENAI_*`, ...) entrano in gioco nelle milestone successive.
+Le altre (`SUPABASE_URL`, `NEO4J_*`, `ANTHROPIC_API_KEY`, ...) entrano in gioco nelle milestone successive.
 
 ### HS256 (dev/test locale)
 
@@ -132,6 +141,26 @@ make worker   # avvia il worker (richiede `make dev` per RabbitMQ + Redis)
 
 > Troubleshooting: se cambi gli `queue_arguments` (es. la config DLX) e RabbitMQ risponde `PRECONDITION_FAILED (406)`, la coda esiste già con argomenti diversi. Elimina la coda vecchia dalla management UI (o con `make infra-reset`) e riavvia il worker.
 
+## Media processing (M4)
+
+Il primo worker reale, agganciato al motore di M3. Dopo il confirm di un upload, l'API accoda un task `transcribe`; il worker scarica il file da B2, lo trasforma in testo e salva un `transcript`.
+
+```
+API (confirm)                       worker (celery)                     DB
+  POST /documents/{id}/confirm        run_transcribe:                   transcripts
+    valida MIME --> uploaded            scarica il file da B2            (1:1 col documento,
+    accoda transcribe (RLS)            estrae (PDF/DOCX/TXT) o            RLS SELECT-only)
+                                       trascrive (audio --> Whisper)
+                                       normalizza --> upsert transcript
+  GET /documents/{id}/transcript <-- legge il testo (404 finche' non pronto)
+```
+
+- **Pipeline pura** (`processing/`): parser PDF/DOCX/TXT, normalizzazione, chunking audio, client Whisper. Sincrona e testabile in isolamento; il `Transcriber` e' un Protocol iniettato (i test usano un fake, niente rete). Vedi [ADR-0006](../docs/adr/0006-media-processing.md).
+- **Errori retryable vs permanenti**: file corrotto / non supportato / vuoto / 404 storage --> `failed` subito (niente retry); blip di rete / 5xx di Whisper --> retry con backoff. Riusa la dead-letter di M3.
+- **Chunking audio**: file sotto 24 MB inviati as-is; oltre, divisi per tempo e ri-esportati in MP3 (sotto il limite di 25 MB di Whisper). Richiede **ffmpeg** (vedi Requisiti host).
+- **Trigger automatico**: la trascrizione parte da `confirm_upload`, sulla sola transizione `pending --> uploaded`, nella stessa transazione della request (enqueue fallito --> rollback, il confirm risponde 503).
+- **Trascrizione audio reale**: richiede `OPENAI_API_KEY`; i documenti testuali no.
+
 ## Layout
 
 ```
@@ -152,10 +181,17 @@ backend/
 |   |   `-- repositories/            # query CRUD
 |   |-- services/                    # business logic (API-agnostic)
 |   |-- schemas/                     # Pydantic I/O schemas
-|   |-- worker/                      # Celery app + runtime + task (M3)
+|   |-- worker/                      # Celery app + runtime + task (M3/M4)
 |   |   |-- celery_app.py            # Celery app: broker, backend, code + DLX
-|   |   |-- runtime.py               # engine NullPool + ponte run_async
-|   |   `-- tasks/echo.py            # echo task (retry, backoff, dead-letter)
+|   |   |-- runtime.py               # engine NullPool + run_async + factory storage/transcriber
+|   |   `-- tasks/                   # echo.py (M3) + transcribe.py (M4: worker reale)
+|   |-- processing/                  # pipeline media M4 (pura, sincrona)
+|   |   |-- documents.py             # parser PDF/DOCX/TXT
+|   |   |-- audio.py                 # chunking audio (pydub/ffmpeg)
+|   |   |-- transcription.py         # Transcriber Protocol + impl OpenAI/Whisper
+|   |   |-- normalize.py             # normalizzazione testo
+|   |   |-- pipeline.py              # process_media (orchestratore)
+|   |   `-- errors.py                # errori di dominio con flag retryable
 |   `-- api/
 |       |-- deps.py                  # FastAPI dependencies
 |       `-- v1/                      # endpoint versione 1
@@ -168,7 +204,11 @@ backend/
     |-- test_task_service.py         # TaskService (repo mock + enqueue patchato)
     |-- test_worker_echo.py          # core async run_echo (DB reale)
     |-- test_tasks_api.py            # endpoint /tasks end-to-end
-    `-- test_rls.py                  # isolamento RLS (profiles, documents, tasks)
+    |-- test_processing.py           # pipeline media pura (parser, normalize, Whisper mock)
+    |-- test_transcript_model.py     # schema tabella transcripts
+    |-- test_worker_transcribe.py    # core async run_transcribe (DB reale)
+    |-- test_transcript_api.py       # endpoint transcript end-to-end
+    `-- test_rls.py                  # isolamento RLS (profiles, documents, tasks, transcripts)
 ```
 
 ## Migrations
@@ -198,7 +238,7 @@ cd backend && uv run pytest tests/test_rls.py -v   # solo un file
 
 Convenzione: i test che toccano il DB chiedono la fixture `seed_auth_user` o `system_session`. I test del worker chiamano `run_echo` direttamente e usano `captured_enqueues` per stubbare l'enqueue Celery (niente broker reale nei test; la pipeline reale è coperta dallo smoke test locale).
 
-## Stato corrente (M3 -- completato)
+## Stato corrente (M4 -- completato)
 
 ### M1 -- Identity & Persistence Foundations
 - [x] Pydantic Settings con tipi forti + SecretStr + validator cross-field
@@ -236,4 +276,15 @@ Convenzione: i test che toccano il DB chiedono la fixture `seed_auth_user` o `sy
 - [x] Endpoint `/tasks` (POST echo 202, GET list, GET detail) + isolamento RLS
 - [x] Test: schema, service (mock), core worker (DB reale), API end-to-end, RLS
 
-Prossima milestone: **M4 -- Media Processing Pipeline** (worker Transcriber via Whisper, parsing PDF/DOCX/TXT).
+### M4 -- Media Processing Pipeline
+- [x] Pacchetto `processing/` puro e sincrono (parser PDF/DOCX/TXT, normalizzazione, chunking audio, client Whisper)
+- [x] `Transcriber` come Protocol iniettato (testabile con fake, provider sostituibile)
+- [x] Tassonomia errori `retryable` (permanente --> failed subito; transiente --> retry con backoff)
+- [x] Chunking audio sotto il limite di 25 MB di Whisper (fast-path + split per tempo in MP3)
+- [x] Alembic migration 0004 (transcripts 1:1 con documents + RLS SELECT-only + indice composito)
+- [x] Worker reale `transcribe` agganciato al motore M3 (core async + wrapper Celery, DI di storage/transcriber)
+- [x] Trigger automatico della trascrizione sul confirm dell'upload (stessa transazione, rollback-safe)
+- [x] Endpoint `GET /documents/{id}/transcript` + isolamento RLS dei transcript
+- [x] Test: pipeline pura (input golden + Whisper mock), core worker (DB reale), API, RLS
+
+Prossima milestone: **M5 -- Knowledge Graph Extraction** (LLM extraction dai transcript, persistenza su Neo4j).
