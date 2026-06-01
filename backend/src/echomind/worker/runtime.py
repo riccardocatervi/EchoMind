@@ -25,10 +25,13 @@ import asyncio
 from collections.abc import Coroutine
 from typing import Any
 
+from openai import OpenAI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from echomind.core.config import get_settings
+from echomind.processing.transcription import OpenAIWhisperTranscriber
+from echomind.services.storage import B2StorageService
 
 # Singleton di PROCESSO (un worker = un processo): inizializzato pigramente al
 # primo task, così la creazione avviene dopo il fork.
@@ -72,3 +75,44 @@ def run_async[T](coro: Coroutine[Any, Any, T]) -> T:
     (vedi ADR-0005).
     """
     return asyncio.run(coro)
+
+
+# Singleton di PROCESSO per storage e transcriber, lazy come l'engine: costruiti
+# al primo uso (post-fork --> fork-safe) e riusati per tutti i task del worker.
+_storage: B2StorageService | None = None
+_transcriber: OpenAIWhisperTranscriber | None = None
+
+
+def get_worker_storage() -> B2StorageService:
+    """Storage B2 del worker (lazy, post-fork). Serve a scaricare il file da processare.
+
+    Solleva StorageError se le credenziali B2 sono incomplete (in produzione il
+    worker le ha sempre; vedi Settings._validate_b2_credentials_in_production).
+    """
+    global _storage
+    if _storage is None:
+        _storage = B2StorageService.from_settings(get_settings())
+    return _storage
+
+
+def get_worker_transcriber() -> OpenAIWhisperTranscriber:
+    """Transcriber Whisper del worker (lazy, post-fork).
+
+    Costruito SOLO quando serve davvero (un task audio lo invoca via factory):
+    solleva se manca OPENAI_API_KEY. I task su DOCUMENTI non lo chiamano affatto
+    (process_media non usa il transcriber per i documenti), quindi processare un
+    PDF non richiede alcuna API key OpenAI.
+    """
+    global _transcriber
+    if _transcriber is None:
+        settings = get_settings()
+        if settings.openai_api_key is None:
+            raise RuntimeError(
+                "OPENAI_API_KEY mancante: la trascrizione audio richiede una API key OpenAI"
+            )
+        client = OpenAI(
+            api_key=settings.openai_api_key.get_secret_value(),
+            organization=settings.openai_org_id,
+        )
+        _transcriber = OpenAIWhisperTranscriber(client=client, model=settings.whisper_model)
+    return _transcriber

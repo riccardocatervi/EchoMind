@@ -100,7 +100,7 @@ def make_celery(settings: Settings) -> Celery:
         task_always_eager=settings.celery_task_always_eager,
         task_eager_propagates=True,
         # --- registrazione dei moduli task ---
-        imports=("echomind.worker.tasks.echo",),
+        imports=("echomind.worker.tasks.echo", "echomind.worker.tasks.transcribe"),
     )
     return app
 
