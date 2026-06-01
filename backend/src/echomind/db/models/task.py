@@ -45,13 +45,14 @@ class TaskStatus(enum.StrEnum):
 
 
 class TaskType(enum.StrEnum):
-    """Tipi di task supportati. Cresce a ogni milestone (M3: solo `echo`).
+    """Tipi di task supportati. Cresce a ogni milestone (M3: echo; M4: transcribe).
 
     Persistito come TEXT nel DB (non ENUM): l'insieme evolve spesso e un
     TEXT + validazione applicativa evita `ALTER TYPE ... ADD VALUE` ripetuti.
     """
 
     ECHO = "echo"
+    TRANSCRIBE = "transcribe"
 
 
 # Stati oltre i quali un task non transiziona più. Usato dal worker per
