@@ -34,6 +34,7 @@ from echomind.services.storage import (
     B2StorageService,
     StorageObjectNotFoundError,
 )
+from echomind.services.task import TaskService
 
 log = get_logger(__name__)
 
@@ -95,6 +96,9 @@ class DocumentService:
     Riceve:
     - repository: opera nella sessione RLS-bound dell'utente
     - storage:    client S3-compatible (in dev test: moto)
+    - task_service: opzionale. Se presente, confirm_upload accoda la trascrizione
+      (M4). Opzionale per disaccoppiamento: un DocumentService senza trigger e'
+      legittimo (flussi senza processing); il wiring reale lo inietta sempre.
     """
 
     def __init__(
@@ -102,9 +106,11 @@ class DocumentService:
         *,
         repository: DocumentRepository,
         storage: B2StorageService,
+        task_service: TaskService | None = None,
     ) -> None:
         self._repository = repository
         self._storage = storage
+        self._task_service = task_service
 
     # -------------------------------------------------------------------------
     # init_upload
@@ -226,6 +232,18 @@ class DocumentService:
             document_id=str(document_id),
             detected_mime=detected_mime,
         )
+
+        # 5. Trigger M4: accoda la trascrizione asincrona. Siamo qui SOLO sulla
+        #    transizione pending --> uploaded (gli early-return in cima escludono
+        #    i documenti gia' uploaded/failed), quindi parte una sola volta.
+        #    Stessa transazione della request: se l'enqueue fallisce
+        #    (TaskEnqueueError), il rollback annulla anche il mark_uploaded e il
+        #    client puo' ritentare il confirm.
+        if self._task_service is not None:
+            await self._task_service.enqueue_transcribe(
+                owner_id=result.owner_id,
+                document_id=result.id,
+            )
         return result
 
     # -------------------------------------------------------------------------
