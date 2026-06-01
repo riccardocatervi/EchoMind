@@ -151,11 +151,15 @@ async def run_transcribe(
                 )
                 return TranscribeOutcome(kind="already_done", result=task.result)
             await task_repo.mark_running(task, retries=attempt)
+            # Risolviamo il documento DENTRO la stessa transazione: una SELECT
+            # fuori da un blocco `session.begin()` aprirebbe una transazione
+            # implicita (autobegin) che confliggerebbe col successivo
+            # `async with session.begin()` ("a transaction is already begun").
+            document = await _load_document(session, task.payload)
 
         log.info("transcribe_task_running", task_id=str(task_id), attempt=attempt + 1)
 
-        # 2. Risolvi il documento (fallimento permanente se assente).
-        document = await _load_document(session, task.payload)
+        # 2. Documento assente --> fallimento permanente.
         if document is None:
             error = "Documento non trovato o payload privo di document_id valido"
             async with session.begin():

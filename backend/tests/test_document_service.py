@@ -292,6 +292,81 @@ class TestConfirmUpload:
 
 
 # =============================================================================
+# confirm_upload --> trigger trascrizione (M4)
+# =============================================================================
+class TestConfirmTriggersTranscription:
+    """Quando confirm porta il documento a 'uploaded', accoda la trascrizione."""
+
+    @pytest.mark.asyncio
+    async def test_success_enqueues_transcription(
+        self,
+        mock_repo: AsyncMock,
+        mock_storage: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        task_service = AsyncMock()
+        svc = DocumentService(repository=mock_repo, storage=mock_storage, task_service=task_service)
+        doc = _make_document(mime_type="application/pdf", size_bytes=1024)
+        mock_repo.get_by_id.return_value = doc
+        mock_storage.head_object.return_value = ObjectMetadata(
+            content_length=1024, content_type="application/pdf"
+        )
+        mock_storage.get_object_range.return_value = b"%PDF-1.7..." * 30
+        mock_repo.mark_uploaded.return_value = doc
+        monkeypatch.setattr(
+            "echomind.services.document.magic.from_buffer",
+            lambda buf, mime: "application/pdf",
+        )
+
+        await svc.confirm_upload(owner_id=doc.owner_id, document_id=doc.id)
+
+        task_service.enqueue_transcribe.assert_awaited_once_with(
+            owner_id=doc.owner_id, document_id=doc.id
+        )
+
+    @pytest.mark.asyncio
+    async def test_already_uploaded_does_not_enqueue(
+        self,
+        mock_repo: AsyncMock,
+        mock_storage: AsyncMock,
+    ) -> None:
+        """Re-confirm di un documento gia' uploaded: nessun nuovo enqueue (idempotenza)."""
+        task_service = AsyncMock()
+        svc = DocumentService(repository=mock_repo, storage=mock_storage, task_service=task_service)
+        doc = _make_document(status=DocumentStatus.UPLOADED)
+        mock_repo.get_by_id.return_value = doc
+
+        await svc.confirm_upload(owner_id=doc.owner_id, document_id=doc.id)
+
+        task_service.enqueue_transcribe.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_mime_mismatch_does_not_enqueue(
+        self,
+        mock_repo: AsyncMock,
+        mock_storage: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Confirm che fallisce la validazione (mark_failed): niente trascrizione."""
+        task_service = AsyncMock()
+        svc = DocumentService(repository=mock_repo, storage=mock_storage, task_service=task_service)
+        doc = _make_document(mime_type="application/pdf", size_bytes=512)
+        mock_repo.get_by_id.return_value = doc
+        mock_storage.head_object.return_value = ObjectMetadata(
+            content_length=512, content_type="application/pdf"
+        )
+        mock_storage.get_object_range.return_value = b"MZ\x90\x00..."
+        monkeypatch.setattr(
+            "echomind.services.document.magic.from_buffer",
+            lambda buf, mime: "application/x-msdownload",
+        )
+
+        await svc.confirm_upload(owner_id=doc.owner_id, document_id=doc.id)
+
+        task_service.enqueue_transcribe.assert_not_awaited()
+
+
+# =============================================================================
 # delete_document
 # =============================================================================
 class TestDeleteDocument:

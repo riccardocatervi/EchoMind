@@ -355,3 +355,69 @@ async def test_alice_cannot_get_bobs_task_by_id(
 
     response = await client.get(f"/api/v1/tasks/{bob_task_id}", headers=auth_headers(alice_id))
     assert response.status_code == 404
+
+
+# =============================================================================
+# RLS su transcripts (M4)
+# =============================================================================
+async def _seed_transcript_for(session: AsyncSession, owner_id: UUID) -> UUID:
+    """Crea profile + document + transcript per `owner_id` (superuser). Ritorna document_id."""
+    await session.execute(
+        text(
+            "INSERT INTO public.profiles (id, display_name) VALUES (:id, 'u') ON CONFLICT (id) DO NOTHING"
+        ),
+        {"id": str(owner_id)},
+    )
+    doc_id = uuid4()
+    await session.execute(
+        text(
+            "INSERT INTO public.documents (id, owner_id, filename, mime_type, size_bytes, storage_key) "
+            "VALUES (:id, :owner, 'f.txt', 'text/plain', 50, :key)"
+        ),
+        {"id": str(doc_id), "owner": str(owner_id), "key": f"users/{owner_id}/{doc_id}"},
+    )
+    await session.execute(
+        text(
+            "INSERT INTO public.transcripts (id, document_id, owner_id, source_type, content, char_count) "
+            "VALUES (:id, :doc, :owner, 'document', 'segreto', 7)"
+        ),
+        {"id": str(uuid4()), "doc": str(doc_id), "owner": str(owner_id)},
+    )
+    await session.commit()
+    return doc_id
+
+
+@pytest.mark.asyncio
+async def test_alice_cannot_get_bobs_transcript(
+    client: httpx.AsyncClient,
+    auth_headers: Callable[[UUID | None], dict[str, str]],
+    seed_auth_user: Callable[[UUID], Awaitable[None]],
+    system_session: AsyncSession,
+) -> None:
+    """Il transcript del documento di Bob e' visibile solo a Bob (404 per Alice)."""
+    alice_id = uuid4()
+    bob_id = uuid4()
+    await seed_auth_user(alice_id)
+    await seed_auth_user(bob_id)
+
+    bob_doc_id = await _seed_transcript_for(system_session, bob_id)
+
+    # Bob legge il proprio transcript --> 200
+    bob_response = await client.get(
+        f"/api/v1/documents/{bob_doc_id}/transcript", headers=auth_headers(bob_id)
+    )
+    assert bob_response.status_code == 200
+    assert bob_response.json()["content"] == "segreto"
+
+    # Alice tenta lo STESSO id --> 404 (RLS lo nasconde, non rivela l'esistenza)
+    alice_response = await client.get(
+        f"/api/v1/documents/{bob_doc_id}/transcript", headers=auth_headers(alice_id)
+    )
+    assert alice_response.status_code == 404
+
+    # Verifica al DB (superuser): il transcript esiste davvero --> Alice e' bloccata da RLS
+    count = await system_session.execute(
+        text("SELECT COUNT(*) FROM public.transcripts WHERE document_id = :d"),
+        {"d": str(bob_doc_id)},
+    )
+    assert count.scalar_one() == 1
