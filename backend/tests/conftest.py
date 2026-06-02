@@ -74,6 +74,9 @@ async def app(test_settings: Settings) -> AsyncIterator[object]:
     # Storage default a None: i test che lo richiedono attivano la fixture
     # `s3_mock_storage` che lo sostituisce con un client moto.
     application.state.storage = None
+    # Graph store default a None (M5): i test del grafo lo sostituiscono con un
+    # FakeGraphStore via dependency_overrides. None --> GET /graph ritorna 503.
+    application.state.graph_store = None
     try:
         yield application
     finally:

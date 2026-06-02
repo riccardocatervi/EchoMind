@@ -34,6 +34,7 @@ from echomind.core.security import JWTClaims, decode_and_validate, extract_beare
 from echomind.db.repositories import (
     DocumentRepository,
     ProfileRepository,
+    SummaryRepository,
     TaskRepository,
     TranscriptRepository,
 )
@@ -41,8 +42,12 @@ from echomind.db.session import set_rls_user
 from echomind.services import (
     B2StorageService,
     DocumentService,
+    GraphService,
+    GraphStore,
+    GraphStoreError,
     ProfileService,
     StorageError,
+    SummaryService,
     TaskService,
     TranscriptService,
 )
@@ -191,6 +196,7 @@ StorageServiceDep = Annotated[B2StorageService, Depends(get_storage_service)]
 
 
 async def get_document_service(
+    request: Request,
     user_id: UserIdDep,
     session: SessionDep,
     storage: StorageServiceDep,
@@ -212,12 +218,19 @@ async def get_document_service(
     )
     await profile_service.get_or_create(user_id)
 
+    # graph_store: opzionale (None se Neo4j non configurato). Serve solo al
+    # best-effort cleanup del sottografo sul delete; non blocca gli altri flussi.
+    graph_store: GraphStore | None = request.app.state.graph_store
+
     return DocumentService(
         repository=DocumentRepository(session),
         storage=storage,
         # Inietta il TaskService (stessa sessione RLS) cosi' confirm_upload puo'
-        # accodare la trascrizione (M4) nella stessa transazione della request.
+        # accodare la trascrizione (M4) e trigger_extraction l'estrazione (M5)
+        # nella stessa transazione della request.
         task_service=TaskService(repository=TaskRepository(session)),
+        transcript_repo=TranscriptRepository(session),
+        graph_store=graph_store,
     )
 
 
@@ -258,3 +271,42 @@ async def get_transcript_service(session: SessionDep) -> TranscriptService:
 
 
 TranscriptServiceDep = Annotated[TranscriptService, Depends(get_transcript_service)]
+
+
+async def get_summary_service(session: SessionDep) -> SummaryService:
+    """Costruisce un SummaryService con la sessione RLS-bound (sola lettura)."""
+    return SummaryService(repository=SummaryRepository(session))
+
+
+SummaryServiceDep = Annotated[SummaryService, Depends(get_summary_service)]
+
+
+def get_graph_store(request: Request) -> GraphStore:
+    """Ritorna il graph store Neo4j creato nel lifespan, o solleva 503.
+
+    Se in dev Neo4j non e' configurato, lifespan ha messo None --> qui solleviamo
+    GraphStoreError, mappato a 503 dal handler globale (come lo storage B2).
+    """
+    graph_store: GraphStore | None = request.app.state.graph_store
+    if graph_store is None:
+        raise GraphStoreError(
+            "Graph backend not configured (NEO4J settings missing). "
+            "Configure NEO4J_URI / NEO4J_PASSWORD.",
+            retryable=False,
+        )
+    return graph_store
+
+
+GraphStoreDep = Annotated[GraphStore, Depends(get_graph_store)]
+
+
+async def get_graph_service(session: SessionDep, graph_store: GraphStoreDep) -> GraphService:
+    """Costruisce un GraphService: RLS su Postgres (ownership) + graph store Neo4j.
+
+    La verifica dell'ownership del documento usa la sessione RLS-bound; la lettura
+    del grafo filtra per owner_id (Neo4j non ha RLS).
+    """
+    return GraphService(documents=DocumentRepository(session), graph_store=graph_store)
+
+
+GraphServiceDep = Annotated[GraphService, Depends(get_graph_service)]
