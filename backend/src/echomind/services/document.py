@@ -73,11 +73,21 @@ MIME_EQUIVALENCES: Final[dict[str, frozenset[str]]] = {
         }
     ),
     "text/plain": frozenset({"text/plain"}),
-    "audio/mpeg": frozenset({"audio/mpeg"}),
-    "audio/wav": frozenset({"audio/wav", "audio/x-wav", "audio/vnd.wave"}),
-    "audio/x-wav": frozenset({"audio/wav", "audio/x-wav", "audio/vnd.wave"}),
-    "audio/mp4": frozenset({"audio/mp4", "audio/x-m4a", "video/mp4"}),
-    "audio/x-m4a": frozenset({"audio/mp4", "audio/x-m4a", "video/mp4"}),
+    # NB "application/octet-stream": libmagic spesso NON riconosce i container
+    # audio (la sua euristica dipende dal magic-database del sistema) e ripiega
+    # sul binario generico. Lo accettiamo SOLO per gli audio: il vero validatore
+    # del contenuto e' la decodifica a valle (ffmpeg nel worker M4), che rifiuta
+    # i non-audio. I documenti restano stretti (octet-stream non accettato):
+    # per PDF/DOCX/TXT libmagic e' affidabile.
+    "audio/mpeg": frozenset({"audio/mpeg", "application/octet-stream"}),
+    "audio/wav": frozenset(
+        {"audio/wav", "audio/x-wav", "audio/vnd.wave", "application/octet-stream"}
+    ),
+    "audio/x-wav": frozenset(
+        {"audio/wav", "audio/x-wav", "audio/vnd.wave", "application/octet-stream"}
+    ),
+    "audio/mp4": frozenset({"audio/mp4", "audio/x-m4a", "video/mp4", "application/octet-stream"}),
+    "audio/x-m4a": frozenset({"audio/mp4", "audio/x-m4a", "video/mp4", "application/octet-stream"}),
 }
 
 

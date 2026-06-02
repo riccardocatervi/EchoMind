@@ -509,6 +509,12 @@ class TestMimeMatches:
             ("audio/mp4", "video/mp4", True),
             ("audio/mp4", "audio/x-m4a", True),
             ("audio/mp4", "audio/mpeg", False),
+            # Audio: octet-stream accettato (libmagic non sniffa i container audio)
+            ("audio/mpeg", "application/octet-stream", True),
+            ("audio/x-m4a", "application/octet-stream", True),
+            # Documenti: octet-stream NON accettato (per loro libmagic e' affidabile)
+            ("application/pdf", "application/octet-stream", False),
+            ("text/plain", "application/octet-stream", False),
             # Declared sconosciuto → False (defensive)
             ("foo/bar", "foo/bar", False),
         ],
