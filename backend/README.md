@@ -24,7 +24,7 @@ cp ../.env.example ../.env
 # (poi popola .env con i secret veri -- vedi sezione sotto)
 
 # Avvio quotidiano
-make dev                # avvia Postgres + RabbitMQ + Redis locali
+make dev                # avvia Postgres (pgvector) + RabbitMQ + Redis + Neo4j locali
 make migrate            # applica le migration Alembic
 make serve              # uvicorn con hot-reload su :8000
 make worker             # (altro terminale) worker Celery su coda echomind.default
@@ -58,6 +58,11 @@ Endpoint disponibili:
 - `POST /api/v1/documents/{id}/confirm` -- oltre a validare il MIME, accoda automaticamente la trascrizione del documento
 - `GET  /api/v1/documents/{id}/transcript` -- testo estratto/trascritto (404 finche' non pronto; RLS-filtered)
 
+**Knowledge Extraction (M5)**
+- `POST /api/v1/documents/{id}/extract` -- avvia l'estrazione del grafo (202; 409 se il transcript non e' pronto). Parte comunque in automatico dopo la trascrizione
+- `GET  /api/v1/documents/{id}/summary` -- riassunto multilivello: panoramica + sezioni (404 finche' non pronto; RLS-filtered)
+- `GET  /api/v1/documents/{id}/graph` -- grafo di conoscenza: nodi + archi + community (404 finche' non pronto; 503 se Neo4j non raggiungibile)
+
 Documentazione interattiva: `http://localhost:8000/docs` (Swagger UI).
 
 ## Variabili d'ambiente
@@ -83,8 +88,15 @@ Tutte le variabili sono tipizzate da Pydantic Settings (`core/config.py`). Valid
 | `WHISPER_MODEL` | Modello di trascrizione OpenAI. Default `whisper-1` |
 | `WHISPER_MAX_CHUNK_BYTES` | Soglia di chunking audio, sotto il limite 25 MB di Whisper. Default 24 MB |
 | `TRANSCRIPTION_SOFT_TIME_LIMIT_SECONDS` | Soft time limit del task di trascrizione. Default 1800 (30 min) |
+| `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` | Knowledge graph (M5). Obbligatorie in produzione. Dev locale: container Neo4j (`bolt://localhost:7687`, default `echomind_dev`). Vedi [ADR-0007](../docs/adr/0007-knowledge-extraction.md) |
+| `GEMINI_API_KEY` | Google AI Studio: estrazione + riassunto + embeddings (M5). Obbligatoria in produzione; opzionale in dev/test (mockata). Free tier su aistudio.google.com |
+| `GEMINI_MODEL`, `GEMINI_EMBEDDING_MODEL` | Modelli Gemini. Default `gemini-flash-latest` / `gemini-embedding-001` |
+| `EMBEDDING_DIMENSIONS` | Dimensione del vettore embedding (deve combaciare con la migration 0005). Default 768 |
+| `EXTRACTION_MAX_CHUNK_CHARS`, `EXTRACTION_CHUNK_OVERLAP_CHARS` | Chunking del testo per l'LLM. Default 12000 / 500 |
+| `ENTITY_DEDUP_SIMILARITY_THRESHOLD` | Soglia coseno per fondere entita' simili. Default 0.85 |
+| `EXTRACTION_SOFT_TIME_LIMIT_SECONDS` | Soft time limit del task di estrazione. Default 1800 (30 min) |
 
-Le altre (`SUPABASE_URL`, `NEO4J_*`, `ANTHROPIC_API_KEY`, ...) entrano in gioco nelle milestone successive.
+Le altre (`SUPABASE_URL`, `ANTHROPIC_API_KEY`, `SENTRY_DSN`, ...) entrano in gioco nelle milestone successive.
 
 ### HS256 (dev/test locale)
 
@@ -161,6 +173,30 @@ API (confirm)                       worker (celery)                     DB
 - **Trigger automatico**: la trascrizione parte da `confirm_upload`, sulla sola transizione `pending --> uploaded`, nella stessa transazione della request (enqueue fallito --> rollback, il confirm risponde 503).
 - **Trascrizione audio reale**: richiede `OPENAI_API_KEY`; i documenti testuali no.
 
+## Knowledge extraction (M5)
+
+Il secondo worker reale. Dopo la trascrizione (auto-concatenata) o un trigger manuale, l'API accoda un task `extract`; il worker legge il `transcript`, ne estrae il grafo via LLM, lo persiste su Neo4j e salva riassunto + embeddings su Postgres.
+
+```
+worker (M4)                          worker (celery, M5)                  datastore
+  transcribe succeeded ---------->     run_extract:                        Neo4j (grafo):
+  (auto-chain best-effort)              carica il transcript                nodi :Entity +
+  POST /documents/{id}/extract --->     chunk --> Gemini (entita'/rel)      archi :RELATES,
+  (trigger manuale / re-run)            --> embed --> dedup coseno          multi-tenant
+                                        --> Louvain (community)
+  GET /documents/{id}/graph   <--       --> riassunto                      Postgres:
+  GET /documents/{id}/summary <--       replace grafo + upsert summary      summaries +
+                                        + replace embeddings                 entity_embeddings
+```
+
+- **Pipeline pura** (`extraction/`): chunking, dedup, Louvain, orchestrazione; `GraphExtractor`/`Embedder`/`Summarizer` sono Protocol iniettati (i test usano fake, niente rete). Vedi [ADR-0007](../docs/adr/0007-knowledge-extraction.md).
+- **Provider LLM**: Gemini (Google AI Studio, free tier) per estrazione, riassunto ed embeddings -- una sola credenziale (`GEMINI_API_KEY`). Structured output (`response_schema` Pydantic) --> JSON garantito.
+- **Grafo su Neo4j**: nodi `:Entity` + archi `:RELATES`, ognuno con `owner_id` + `document_id`. Neo4j non ha RLS: l'isolamento e' applicativo (ogni query filtra per owner), con doppia barriera (l'API verifica l'ownership via RLS su Postgres prima di interrogare il grafo).
+- **Community detection**: Louvain in-process (`networkx`), niente plugin GDS --> portabile su AuraDB free.
+- **Embeddings**: Gemini --> pgvector (`vector(768)`), per la dedup semantica delle entita' e le fondamenta del RAG (M8).
+- **Idempotenza cross-store**: ri-estrarre sostituisce (grafo `DETACH DELETE` + create, summary upsert, embeddings replace); il delete del documento pulisce anche il sottografo Neo4j.
+- **Trigger**: auto-chain best-effort sul transcribe riuscito + `POST /documents/{id}/extract` (re-run / recupero).
+
 ## Layout
 
 ```
@@ -181,16 +217,25 @@ backend/
 |   |   `-- repositories/            # query CRUD
 |   |-- services/                    # business logic (API-agnostic)
 |   |-- schemas/                     # Pydantic I/O schemas
-|   |-- worker/                      # Celery app + runtime + task (M3/M4)
+|   |-- worker/                      # Celery app + runtime + task (M3/M4/M5)
 |   |   |-- celery_app.py            # Celery app: broker, backend, code + DLX
-|   |   |-- runtime.py               # engine NullPool + run_async + factory storage/transcriber
-|   |   `-- tasks/                   # echo.py (M3) + transcribe.py (M4: worker reale)
+|   |   |-- runtime.py               # engine NullPool + run_async + factory storage/transcriber/Gemini/grafo
+|   |   `-- tasks/                   # echo.py (M3) + transcribe.py (M4) + extract.py (M5)
 |   |-- processing/                  # pipeline media M4 (pura, sincrona)
 |   |   |-- documents.py             # parser PDF/DOCX/TXT
 |   |   |-- audio.py                 # chunking audio (pydub/ffmpeg)
 |   |   |-- transcription.py         # Transcriber Protocol + impl OpenAI/Whisper
 |   |   |-- normalize.py             # normalizzazione testo
 |   |   |-- pipeline.py              # process_media (orchestratore)
+|   |   `-- errors.py                # errori di dominio con flag retryable
+|   |-- extraction/                  # pipeline knowledge extraction M5 (pura + adapter Gemini)
+|   |   |-- chunking.py              # chunking testo per l'LLM
+|   |   |-- schema.py                # structured output Pydantic + dataclass di dominio
+|   |   |-- dedup.py                 # dedup esatta + semantica (coseno)
+|   |   |-- community.py             # community detection Louvain (networkx)
+|   |   |-- extractor/embedder/summarize.py  # Protocol degli adapter
+|   |   |-- gemini.py                # impl Gemini (extractor + embedder + summarizer)
+|   |   |-- pipeline.py              # extract_knowledge (orchestratore)
 |   |   `-- errors.py                # errori di dominio con flag retryable
 |   `-- api/
 |       |-- deps.py                  # FastAPI dependencies
@@ -208,7 +253,13 @@ backend/
     |-- test_transcript_model.py     # schema tabella transcripts
     |-- test_worker_transcribe.py    # core async run_transcribe (DB reale)
     |-- test_transcript_api.py       # endpoint transcript end-to-end
-    `-- test_rls.py                  # isolamento RLS (profiles, documents, tasks, transcripts)
+    |-- test_extraction.py           # pipeline estrazione pura (chunking, dedup, Louvain)
+    |-- test_summary_model.py        # schema tabelle summaries + entity_embeddings
+    |-- test_worker_extract.py       # core async run_extract (DB reale + fake Gemini/Neo4j)
+    |-- test_summary_api.py          # endpoint summary end-to-end
+    |-- test_graph_api.py            # endpoint graph (FakeGraphStore via dependency override)
+    |-- test_extract_api.py          # endpoint POST /extract (trigger manuale)
+    `-- test_rls.py                  # isolamento RLS (profiles, documents, tasks, transcripts, summaries, embeddings)
 ```
 
 ## Migrations
@@ -238,7 +289,7 @@ cd backend && uv run pytest tests/test_rls.py -v   # solo un file
 
 Convenzione: i test che toccano il DB chiedono la fixture `seed_auth_user` o `system_session`. I test del worker chiamano `run_echo` direttamente e usano `captured_enqueues` per stubbare l'enqueue Celery (niente broker reale nei test; la pipeline reale è coperta dallo smoke test locale).
 
-## Stato corrente (M4 -- completato)
+## Stato corrente (M5 -- completato)
 
 ### M1 -- Identity & Persistence Foundations
 - [x] Pydantic Settings con tipi forti + SecretStr + validator cross-field
@@ -287,4 +338,17 @@ Convenzione: i test che toccano il DB chiedono la fixture `seed_auth_user` o `sy
 - [x] Endpoint `GET /documents/{id}/transcript` + isolamento RLS dei transcript
 - [x] Test: pipeline pura (input golden + Whisper mock), core worker (DB reale), API, RLS
 
-Prossima milestone: **M5 -- Knowledge Graph Extraction** (LLM extraction dai transcript, persistenza su Neo4j).
+### M5 -- Knowledge Graph Extraction
+- [x] Pacchetto `extraction/` puro (chunking, dedup esatta + semantica coseno, Louvain con networkx, orchestratore)
+- [x] `GraphExtractor`/`Embedder`/`Summarizer` come Protocol + adapter Gemini (structured output `response_schema`)
+- [x] `Neo4jGraphStore` (driver sync + `asyncio.to_thread`) con multi-tenancy applicativa (`owner_id` + `document_id` su nodi/archi)
+- [x] Community detection Louvain in-process (portabile su AuraDB free, niente plugin GDS)
+- [x] Embeddings Gemini + dedup semantica + persistenza pgvector (`vector(768)`)
+- [x] Alembic migration 0005 (estensione vector + summaries + entity_embeddings, RLS SELECT-only)
+- [x] Worker reale `extract` (core async + wrapper Celery, DI di graph store + adapter Gemini)
+- [x] Auto-concatenazione transcribe --> extract (best-effort) + trigger manuale `POST /documents/{id}/extract`
+- [x] Endpoint `GET /documents/{id}/summary` + `GET /documents/{id}/graph` + isolamento RLS
+- [x] Hardening della key vuota (`require_secret`), esteso a Gemini e OpenAI/Whisper
+- [x] Test: pipeline pura, core worker (DB reale + fake), API (summary/graph/extract), RLS (summary + embeddings)
+
+Prossima milestone: **M6 -- Frontend Visualization** (React + React Flow: upload, stato, esplorazione del grafo).

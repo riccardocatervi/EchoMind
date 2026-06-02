@@ -42,3 +42,4 @@ Scrivilo quando:
 | [0004](0004-content-ingestion.md) | Content ingestion: presigned URL, S3, MIME via magic bytes | Accepted |
 | [0005](0005-async-job-infrastructure.md) | Infrastruttura job asincroni: Celery, RabbitMQ, Redis, tabella tasks | Accepted |
 | [0006](0006-media-processing.md) | Media processing: pipeline pura, Transcriber Protocol, errori retryable, trigger su confirm | Accepted |
+| [0007](0007-knowledge-extraction.md) | Knowledge extraction: GraphExtractor Protocol, Gemini, Neo4j multi-tenant, Louvain in-process, embeddings pgvector | Accepted |
