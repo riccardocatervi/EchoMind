@@ -421,3 +421,127 @@ async def test_alice_cannot_get_bobs_transcript(
         {"d": str(bob_doc_id)},
     )
     assert count.scalar_one() == 1
+
+
+# =============================================================================
+# RLS su summaries + entity_embeddings (M5)
+# =============================================================================
+async def _seed_summary_for(session: AsyncSession, owner_id: UUID) -> UUID:
+    """Crea profile + document + summary per `owner_id` (superuser). Ritorna document_id."""
+    await session.execute(
+        text(
+            "INSERT INTO public.profiles (id, display_name) VALUES (:id, 'u') ON CONFLICT (id) DO NOTHING"
+        ),
+        {"id": str(owner_id)},
+    )
+    doc_id = uuid4()
+    await session.execute(
+        text(
+            "INSERT INTO public.documents (id, owner_id, filename, mime_type, size_bytes, storage_key) "
+            "VALUES (:id, :owner, 'f.txt', 'text/plain', 50, :key)"
+        ),
+        {"id": str(doc_id), "owner": str(owner_id), "key": f"users/{owner_id}/{doc_id}"},
+    )
+    await session.execute(
+        text(
+            "INSERT INTO public.summaries (id, document_id, owner_id, overview) "
+            "VALUES (:id, :doc, :owner, 'segreto')"
+        ),
+        {"id": str(uuid4()), "doc": str(doc_id), "owner": str(owner_id)},
+    )
+    await session.commit()
+    return doc_id
+
+
+@pytest.mark.asyncio
+async def test_alice_cannot_get_bobs_summary(
+    client: httpx.AsyncClient,
+    auth_headers: Callable[[UUID | None], dict[str, str]],
+    seed_auth_user: Callable[[UUID], Awaitable[None]],
+    system_session: AsyncSession,
+) -> None:
+    """Il summary del documento di Bob e' visibile solo a Bob (404 per Alice)."""
+    alice_id = uuid4()
+    bob_id = uuid4()
+    await seed_auth_user(alice_id)
+    await seed_auth_user(bob_id)
+
+    bob_doc_id = await _seed_summary_for(system_session, bob_id)
+
+    bob_response = await client.get(
+        f"/api/v1/documents/{bob_doc_id}/summary", headers=auth_headers(bob_id)
+    )
+    assert bob_response.status_code == 200
+    assert bob_response.json()["overview"] == "segreto"
+
+    alice_response = await client.get(
+        f"/api/v1/documents/{bob_doc_id}/summary", headers=auth_headers(alice_id)
+    )
+    assert alice_response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_rls_blocks_other_users_embeddings(
+    seed_auth_user: Callable[[UUID], Awaitable[None]],
+    system_session: AsyncSession,
+) -> None:
+    """DB-level: gli embeddings sono visibili solo all'owner (policy embedding_select_own).
+
+    Gli embeddings non hanno endpoint API in M5; questo test e' la difesa in
+    profondita' a livello DB (come per profiles)."""
+    owner_id = uuid4()
+    other_id = uuid4()
+    await seed_auth_user(owner_id)
+    await seed_auth_user(other_id)
+
+    await system_session.execute(
+        text("INSERT INTO public.profiles (id, display_name) VALUES (:id, 'o')"),
+        {"id": str(owner_id)},
+    )
+    doc_id = uuid4()
+    await system_session.execute(
+        text(
+            "INSERT INTO public.documents (id, owner_id, filename, mime_type, size_bytes, storage_key) "
+            "VALUES (:id, :owner, 'f.txt', 'text/plain', 50, :key)"
+        ),
+        {"id": str(doc_id), "owner": str(owner_id), "key": f"users/{owner_id}/{doc_id}"},
+    )
+    zero_vector = "[" + ",".join(["0"] * 768) + "]"
+    await system_session.execute(
+        text(
+            "INSERT INTO public.entity_embeddings (id, document_id, owner_id, entity_id, name, embedding) "
+            "VALUES (:id, :doc, :owner, :eid, 'X', CAST(:emb AS vector))"
+        ),
+        {
+            "id": str(uuid4()),
+            "doc": str(doc_id),
+            "owner": str(owner_id),
+            "eid": str(uuid4()),
+            "emb": zero_vector,
+        },
+    )
+    await system_session.commit()
+
+    # L'altro utente (app_runtime + suo claim) NON vede l'embedding.
+    await system_session.execute(text("BEGIN"))
+    await system_session.execute(text("SET LOCAL ROLE app_runtime"))
+    await system_session.execute(
+        text("SELECT set_config('request.jwt.claim.sub', :uid, true)"),
+        {"uid": str(other_id)},
+    )
+    result = await system_session.execute(text("SELECT COUNT(*) FROM public.entity_embeddings"))
+    count_other = result.scalar_one()
+    await system_session.execute(text("COMMIT"))
+    assert count_other == 0
+
+    # L'owner (suo claim) vede la propria riga.
+    await system_session.execute(text("BEGIN"))
+    await system_session.execute(text("SET LOCAL ROLE app_runtime"))
+    await system_session.execute(
+        text("SELECT set_config('request.jwt.claim.sub', :uid, true)"),
+        {"uid": str(owner_id)},
+    )
+    result = await system_session.execute(text("SELECT COUNT(*) FROM public.entity_embeddings"))
+    count_owner = result.scalar_one()
+    await system_session.execute(text("COMMIT"))
+    assert count_owner == 1
