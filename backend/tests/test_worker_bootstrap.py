@@ -21,9 +21,10 @@ def test_worker_imports_task_modules_without_cycle() -> None:
     code = (
         "import echomind.worker.tasks.echo;"
         "import echomind.worker.tasks.transcribe;"
+        "import echomind.worker.tasks.extract;"
         "from echomind.worker.celery_app import celery_app;"
         "names = sorted(t for t in celery_app.tasks if t.startswith('echomind'));"
-        "assert names == ['echomind.echo', 'echomind.transcribe'], names;"
+        "assert names == ['echomind.echo', 'echomind.extract', 'echomind.transcribe'], names;"
         "print('WORKER_BOOTSTRAP_OK')"
     )
     result = subprocess.run(
