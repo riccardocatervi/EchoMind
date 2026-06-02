@@ -29,7 +29,7 @@ from openai import OpenAI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from echomind.core.config import get_settings
+from echomind.core.config import get_settings, require_secret
 from echomind.processing.transcription import OpenAIWhisperTranscriber
 from echomind.services.storage import B2StorageService
 
@@ -106,12 +106,15 @@ def get_worker_transcriber() -> OpenAIWhisperTranscriber:
     global _transcriber
     if _transcriber is None:
         settings = get_settings()
-        if settings.openai_api_key is None:
-            raise RuntimeError(
-                "OPENAI_API_KEY mancante: la trascrizione audio richiede una API key OpenAI"
-            )
+        # require_secret: una OPENAI_API_KEY vuota (placeholder '' nel .env) viene
+        # trattata come assente --> errore chiaro qui, non un 401 criptico da Whisper.
+        api_key = require_secret(
+            settings.openai_api_key,
+            env_name="OPENAI_API_KEY",
+            hint="La trascrizione audio richiede una API key OpenAI.",
+        )
         client = OpenAI(
-            api_key=settings.openai_api_key.get_secret_value(),
+            api_key=api_key,
             organization=settings.openai_org_id,
         )
         _transcriber = OpenAIWhisperTranscriber(client=client, model=settings.whisper_model)

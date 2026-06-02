@@ -72,6 +72,21 @@ dependencies = [
     #   - macOS:  brew install ffmpeg
     #   - Ubuntu: apt install ffmpeg
     "pydub>=0.25.1",
+
+    # --- Knowledge extraction (M5: grafo di conoscenza + riassunti + embeddings) ---
+    # SDK unificato Google Gen AI: Gemini per estrazione/riassunto + embeddings.
+    # Una sola credenziale (GEMINI_API_KEY da Google AI Studio, free tier).
+    "google-genai>=1.0.0",
+    # Driver ufficiale Neo4j (Bolt). Usato in modalita' SINCRONA + asyncio.to_thread
+    # (come boto3/OpenAI: evita l'affinita' loop<->client tra i task del worker).
+    "neo4j>=5.24.0",
+    # Tipo SQLAlchemy `Vector` + supporto pgvector per gli embeddings su Postgres.
+    "pgvector>=0.3.0",
+    # Community detection (Louvain) in-process: niente plugin GDS richiesto su Neo4j
+    # (portabile anche su AuraDB free tier).
+    "networkx>=3.3",
+    # Algebra vettoriale per la similarita' coseno nella deduplicazione entita'.
+    "numpy>=2.0",
 ]
 
 [project.urls]
@@ -176,9 +191,10 @@ disallow_untyped_defs = false
 # solo "import-untyped" per questi pacchetti, senza allentare lo strict altrove.
 # - celery/kombu: dynamically typed by design (M3)
 # - pydub: nessuno stub; docx (python-docx): tipi incompleti (M4)
-# NB: openai e pypdf SONO tipizzati (py.typed) --> non vanno qui.
+# - networkx: niente py.typed marker (M5)
+# NB: openai/pypdf (M4) e neo4j/google-genai/pgvector (M5) SONO tipizzati --> non vanno qui.
 [[tool.mypy.overrides]]
-module = ["celery.*", "kombu.*", "pydub.*", "docx.*"]
+module = ["celery.*", "kombu.*", "pydub.*", "docx.*", "networkx.*"]
 ignore_missing_imports = true
 
 # =============================================================================
