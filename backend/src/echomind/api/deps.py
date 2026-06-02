@@ -31,7 +31,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from echomind.core.config import Settings
 from echomind.core.security import JWTClaims, decode_and_validate, extract_bearer_token
-from echomind.db.repositories import DocumentRepository, ProfileRepository, TaskRepository
+from echomind.db.repositories import (
+    DocumentRepository,
+    ProfileRepository,
+    TaskRepository,
+    TranscriptRepository,
+)
 from echomind.db.session import set_rls_user
 from echomind.services import (
     B2StorageService,
@@ -39,6 +44,7 @@ from echomind.services import (
     ProfileService,
     StorageError,
     TaskService,
+    TranscriptService,
 )
 
 
@@ -209,6 +215,9 @@ async def get_document_service(
     return DocumentService(
         repository=DocumentRepository(session),
         storage=storage,
+        # Inietta il TaskService (stessa sessione RLS) cosi' confirm_upload puo'
+        # accodare la trascrizione (M4) nella stessa transazione della request.
+        task_service=TaskService(repository=TaskRepository(session)),
     )
 
 
@@ -236,3 +245,16 @@ async def get_task_service(
 
 
 TaskServiceDep = Annotated[TaskService, Depends(get_task_service)]
+
+
+async def get_transcript_service(session: SessionDep) -> TranscriptService:
+    """Costruisce un TranscriptService con la sessione RLS-bound dell'utente.
+
+    Sola lettura: l'utente vede solo i propri transcript (policy
+    `transcript_select_own`). Niente provisioning del profile: non si inserisce
+    nulla, quindi nessun vincolo FK da soddisfare a monte.
+    """
+    return TranscriptService(repository=TranscriptRepository(session))
+
+
+TranscriptServiceDep = Annotated[TranscriptService, Depends(get_transcript_service)]

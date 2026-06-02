@@ -211,6 +211,34 @@ class B2StorageService:
         return await asyncio.to_thread(body.read)
 
     # -------------------------------------------------------------------------
+    # GET full (download completo, usato dal worker M4 per processare il file)
+    # -------------------------------------------------------------------------
+    async def get_object(self, key: str) -> bytes:
+        """Scarica l'INTERO oggetto e ne ritorna i byte.
+
+        A differenza di get_object_range (primi byte per il magic-detect), qui
+        serve tutto il contenuto da dare in pasto a pypdf / python-docx / pydub.
+        Costo: il file intero in memoria -- accettabile, il limite di upload e'
+        50 MB (vedi max_upload_size_bytes).
+
+        Raises:
+            StorageObjectNotFoundError: 404 / NoSuchKey.
+            StorageError: altri errori.
+        """
+        try:
+            response = await asyncio.to_thread(
+                self._client.get_object,
+                Bucket=self._bucket,
+                Key=key,
+            )
+        except ClientError as exc:
+            self._raise_domain_error(exc, key)
+
+        # StreamingBody.read() e' sincrono --> to_thread per non bloccare il loop.
+        body = response["Body"]
+        return await asyncio.to_thread(body.read)
+
+    # -------------------------------------------------------------------------
     # DELETE
     # -------------------------------------------------------------------------
     async def delete_object(self, key: str) -> None:

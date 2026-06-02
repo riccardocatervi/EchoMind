@@ -28,6 +28,11 @@ from echomind.services.task import (
     TaskNotFoundError,
     TaskService,
 )
+from echomind.services.transcript import (
+    TranscriptError,
+    TranscriptNotFoundError,
+    TranscriptService,
+)
 
 __all__ = [
     "B2StorageService",
@@ -43,4 +48,7 @@ __all__ = [
     "TaskError",
     "TaskNotFoundError",
     "TaskService",
+    "TranscriptError",
+    "TranscriptNotFoundError",
+    "TranscriptService",
 ]

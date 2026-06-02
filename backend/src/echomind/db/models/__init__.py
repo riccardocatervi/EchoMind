@@ -12,12 +12,15 @@ evitare cicli import.
 from echomind.db.models.document import Document, DocumentStatus
 from echomind.db.models.profile import Profile
 from echomind.db.models.task import Task, TaskStatus, TaskType
+from echomind.db.models.transcript import SourceType, Transcript
 
 __all__ = [
     "Document",
     "DocumentStatus",
     "Profile",
+    "SourceType",
     "Task",
     "TaskStatus",
     "TaskType",
+    "Transcript",
 ]

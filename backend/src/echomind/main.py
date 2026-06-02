@@ -39,6 +39,7 @@ from echomind.services import (
     StorageError,
     TaskEnqueueError,
     TaskNotFoundError,
+    TranscriptNotFoundError,
 )
 
 
@@ -240,6 +241,17 @@ def _register_exception_handlers(app: FastAPI) -> None:
     async def _on_task_enqueue_error(request: Request, exc: TaskEnqueueError) -> JSONResponse:
         # 503: il broker (RabbitMQ) non e' raggiungibile. Il client puo' riprovare.
         return _make_response(503, "task_enqueue_failed", "Task queue backend error")
+
+    # -------------------------------------------------------------------------
+    # Errori di dominio Transcript (M4)
+    # -------------------------------------------------------------------------
+    @app.exception_handler(TranscriptNotFoundError)
+    async def _on_transcript_not_found(
+        request: Request, exc: TranscriptNotFoundError
+    ) -> JSONResponse:
+        # 404 anche se il transcript non e' ancora pronto (in elaborazione) o e'
+        # di un altro utente (RLS lo nasconde). Il client fa polling fino a 200.
+        return _make_response(404, "transcript_not_found", "Transcript not found")
 
 
 # -----------------------------------------------------------------------------

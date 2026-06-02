@@ -31,7 +31,17 @@ from echomind.core.logging import get_logger
 from echomind.db.models import Task, TaskType
 from echomind.db.repositories import TaskRepository
 from echomind.worker.celery_app import WORK_QUEUE
-from echomind.worker.tasks.echo import echo_task
+
+# NB: i task Celery (echo_task, transcribe_task) sono importati LAZY dentro i
+# metodi di enqueue, non qui a livello di modulo. Motivo: spezzare un ciclo di
+# import. Il worker avvia importando `worker.tasks.echo` per primo, che importa
+# `worker.runtime` --> `services.storage` --> (services/__init__) -->
+# `services.document` --> QUESTO modulo. Se qui importassimo i task a livello di
+# modulo, si richiuderebbe il cerchio su `worker.tasks.echo` ancora "partially
+# initialized" (ImportError). Un import a livello di funzione rompe il ciclo: al
+# momento della chiamata, i moduli task sono ormai completamente inizializzati.
+# (La soluzione piu' disaccoppiata -- enqueue per nome con celery_app.send_task,
+# senza importare affatto i task -- e' annotata in ADR-0006 come evoluzione M9.)
 
 log = get_logger(__name__)
 
@@ -81,6 +91,9 @@ class TaskService:
             payload=payload,
         )
 
+        # Import lazy: vedi nota in cima al modulo (rottura del ciclo di import).
+        from echomind.worker.tasks.echo import echo_task
+
         # task_id Celery == id della riga: un solo identificatore, nessuna mappa.
         try:
             echo_task.apply_async(
@@ -93,6 +106,44 @@ class TaskService:
             raise TaskEnqueueError("Impossibile accodare il task sul broker") from exc
 
         log.info("task_enqueued", task_id=str(task.id), task_type=TaskType.ECHO.value)
+        return task
+
+    async def enqueue_transcribe(self, *, owner_id: UUID, document_id: UUID) -> Task:
+        """Crea la riga (status=queued, type=transcribe) e accoda il task sul broker.
+
+        Il payload porta il document_id: il worker lo legge dalla riga (sorgente
+        di verita') per scaricare e processare il file. task_id Celery == id riga.
+
+        Raises:
+            TaskEnqueueError: se l'enqueue sul broker fallisce (--> 503). La
+            transazione della request fara' rollback, quindi la riga non resta.
+        """
+        payload: dict[str, Any] = {"document_id": str(document_id)}
+        task = await self._repository.create(
+            owner_id=owner_id,
+            task_type=TaskType.TRANSCRIBE.value,
+            payload=payload,
+        )
+
+        # Import lazy: vedi nota in cima al modulo (rottura del ciclo di import).
+        from echomind.worker.tasks.transcribe import transcribe_task
+
+        try:
+            transcribe_task.apply_async(
+                args=[str(task.id)],
+                task_id=str(task.id),
+                queue=WORK_QUEUE,
+            )
+        except Exception as exc:
+            log.error("task_enqueue_failed", task_id=str(task.id), error=str(exc))
+            raise TaskEnqueueError("Impossibile accodare il task di trascrizione") from exc
+
+        log.info(
+            "task_enqueued",
+            task_id=str(task.id),
+            task_type=TaskType.TRANSCRIBE.value,
+            document_id=str(document_id),
+        )
         return task
 
     async def get_task(self, *, task_id: UUID) -> Task:

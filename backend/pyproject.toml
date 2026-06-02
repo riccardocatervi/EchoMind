@@ -59,6 +59,19 @@ dependencies = [
     # RabbitMQ è coperto da kombu/py-amqp, già dipendenze transitive di Celery.
     # Trascina anche billiard (prefork), vine, amqp.
     "celery[redis]>=5.4.0",
+
+    # --- Media processing (M4: parsing documenti + trascrizione audio) ---
+    # OpenAI SDK: client Whisper per la trascrizione audio --> testo.
+    "openai>=1.50.0",
+    # Estrazione testo da PDF. Puro Python, nessuna dipendenza di sistema.
+    "pypdf>=5.0.0",
+    # Estrazione testo da DOCX (Open XML). NB: il package importabile è `docx`.
+    "python-docx>=1.1.0",
+    # Manipolazione audio: chunking sotto il limite di 25MB di Whisper.
+    # Richiede ffmpeg a livello di sistema (come libmagic per python-magic):
+    #   - macOS:  brew install ffmpeg
+    #   - Ubuntu: apt install ffmpeg
+    "pydub>=0.25.1",
 ]
 
 [project.urls]
@@ -159,10 +172,13 @@ pretty = true
 module = "tests.*"
 disallow_untyped_defs = false
 
-# Celery e kombu non spediscono stub di tipo completi: silenziamo solo
-# "import-untyped" per questi pacchetti, senza allentare lo strict altrove.
+# Alcune librerie non spediscono stub di tipo (o sono incomplete): silenziamo
+# solo "import-untyped" per questi pacchetti, senza allentare lo strict altrove.
+# - celery/kombu: dynamically typed by design (M3)
+# - pydub: nessuno stub; docx (python-docx): tipi incompleti (M4)
+# NB: openai e pypdf SONO tipizzati (py.typed) --> non vanno qui.
 [[tool.mypy.overrides]]
-module = ["celery.*", "kombu.*"]
+module = ["celery.*", "kombu.*", "pydub.*", "docx.*"]
 ignore_missing_imports = true
 
 # =============================================================================

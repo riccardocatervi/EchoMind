@@ -21,12 +21,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, status
 
-from echomind.api.deps import DocumentServiceDep, UserIdDep
+from echomind.api.deps import DocumentServiceDep, TranscriptServiceDep, UserIdDep
 from echomind.schemas.document import (
     DocumentInitUpload,
     DocumentInitUploadResponse,
     DocumentRead,
 )
+from echomind.schemas.transcript import TranscriptRead
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -137,6 +138,32 @@ async def get_document(
 ) -> DocumentRead:
     document = await service.get_document(document_id=document_id)
     return DocumentRead.model_validate(document)
+
+
+# -----------------------------------------------------------------------------
+# Transcript (M4): testo estratto/trascritto dal documento
+# -----------------------------------------------------------------------------
+@router.get(
+    "/{document_id}/transcript",
+    response_model=TranscriptRead,
+    summary="Transcript di un documento (testo estratto o trascritto)",
+    description=(
+        "Ritorna il transcript prodotto dal worker dopo il confirm dell'upload. "
+        "404 finche' non e' pronto (in elaborazione o fallito) o se non e' tuo: "
+        "il client fa polling finche' non riceve 200."
+    ),
+    responses={
+        401: {"description": "Token mancante/invalido"},
+        404: {"description": "Transcript non disponibile (in elaborazione, fallito o non tuo)"},
+    },
+)
+async def get_document_transcript(
+    user_id: UserIdDep,
+    document_id: UUID,
+    service: TranscriptServiceDep,
+) -> TranscriptRead:
+    transcript = await service.get_by_document(document_id=document_id)
+    return TranscriptRead.model_validate(transcript)
 
 
 # -----------------------------------------------------------------------------
