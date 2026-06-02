@@ -191,10 +191,10 @@ disallow_untyped_defs = false
 # solo "import-untyped" per questi pacchetti, senza allentare lo strict altrove.
 # - celery/kombu: dynamically typed by design (M3)
 # - pydub: nessuno stub; docx (python-docx): tipi incompleti (M4)
-# - networkx: niente py.typed marker (M5)
-# NB: openai/pypdf (M4) e neo4j/google-genai/pgvector (M5) SONO tipizzati --> non vanno qui.
+# - networkx, pgvector: niente py.typed marker (M5)
+# NB: openai/pypdf (M4) e neo4j/google-genai (M5) SONO tipizzati --> non vanno qui.
 [[tool.mypy.overrides]]
-module = ["celery.*", "kombu.*", "pydub.*", "docx.*", "networkx.*"]
+module = ["celery.*", "kombu.*", "pydub.*", "docx.*", "networkx.*", "pgvector.*"]
 ignore_missing_imports = true
 
 # =============================================================================

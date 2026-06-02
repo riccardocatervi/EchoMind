@@ -85,8 +85,8 @@ def test_task_status_enum_values() -> None:
 
 
 def test_task_type_enum_values() -> None:
-    """Tipi di task: 'echo' (M3) + 'transcribe' (M4)."""
-    assert {t.value for t in TaskType} == {"echo", "transcribe"}
+    """Tipi di task: 'echo' (M3) + 'transcribe' (M4) + 'extract' (M5)."""
+    assert {t.value for t in TaskType} == {"echo", "transcribe", "extract"}
 
 
 def test_terminal_statuses() -> None:
