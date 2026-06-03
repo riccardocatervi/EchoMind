@@ -1,0 +1,19 @@
+# Dipendenze
+node_modules
+
+# Build output
+dist
+dist-ssr
+
+# Variabili d'ambiente locali (committiamo solo .env.example)
+.env
+.env.*
+!.env.example
+
+# Cache / artefatti
+*.local
+*.tsbuildinfo
+.eslintcache
+
+# Editor / OS
+.DS_Store
