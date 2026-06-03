@@ -16,6 +16,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
@@ -171,8 +172,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Settings disponibili in app.state — accessibili dagli endpoint via request.
     app.state.settings = settings
 
-    # Middleware: ordine = ordine di esecuzione "in entrata".
+    # Middleware. NB (Starlette): l'ULTIMO middleware aggiunto e' il piu' ESTERNO,
+    # cioe' gira per PRIMO sulla richiesta in entrata e per ULTIMO sulla risposta.
+    # Vogliamo CORS piu' esterno di RequestId, cosi':
+    #   - intercetta il preflight OPTIONS prima del routing;
+    #   - aggiunge gli header CORS anche alle risposte d'errore (401/404/503/...).
+    # Percio' RequestId va aggiunto PRIMA, CORS DOPO.
     app.add_middleware(RequestIdMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allow_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["X-Request-ID"],
+    )
 
     # Exception handlers: mappa eccezioni di dominio a HTTP status.
     _register_exception_handlers(app)
