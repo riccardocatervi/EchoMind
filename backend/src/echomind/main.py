@@ -36,11 +36,16 @@ from echomind.services import (
     B2StorageService,
     DocumentAlreadyConfirmedError,
     DocumentNotFoundError,
+    ExtractionNotReadyError,
+    GraphNotReadyError,
+    GraphStoreError,
     StorageError,
+    SummaryNotFoundError,
     TaskEnqueueError,
     TaskNotFoundError,
     TranscriptNotFoundError,
 )
+from echomind.services.graph_store import Neo4jGraphStore
 
 
 # -----------------------------------------------------------------------------
@@ -111,10 +116,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.storage = None
         log.warning("storage_service_unavailable", reason=str(exc))
 
+    # Graph store (Neo4j, M5). Opzionale in dev come lo storage: se NEO4J_* non
+    # sono popolate, restiamo a None e GET /documents/{id}/graph ritorna 503.
+    # ensure_constraints crea il vincolo di unicita' (idempotente). Best-effort:
+    # se Neo4j non e' raggiungibile/configurato, restiamo a None senza bloccare
+    # l'avvio (l'API resta su; il worker scrive comunque il proprio graph store).
+    try:
+        graph_store = Neo4jGraphStore.from_settings(settings)
+        await graph_store.ensure_constraints()
+        app.state.graph_store = graph_store
+        log.info("graph_store_ready")
+    except Exception as exc:
+        # Startup resiliente: Neo4j assente/giu' non deve impedire l'avvio dell'API.
+        app.state.graph_store = None
+        log.warning("graph_store_unavailable", reason=str(exc))
+
     yield  # ← qui gira l'app
 
     # Shutdown
     log.info("app_shutting_down")
+    if app.state.graph_store is not None:
+        await app.state.graph_store.close()
+        log.info("graph_store_closed")
     await app.state.engine.dispose()
     log.info("db_engine_disposed")
 
@@ -252,6 +275,31 @@ def _register_exception_handlers(app: FastAPI) -> None:
         # 404 anche se il transcript non e' ancora pronto (in elaborazione) o e'
         # di un altro utente (RLS lo nasconde). Il client fa polling fino a 200.
         return _make_response(404, "transcript_not_found", "Transcript not found")
+
+    # -------------------------------------------------------------------------
+    # Errori di dominio KnowledgeExtraction (M5)
+    # -------------------------------------------------------------------------
+    @app.exception_handler(SummaryNotFoundError)
+    async def _on_summary_not_found(request: Request, exc: SummaryNotFoundError) -> JSONResponse:
+        # 404: riassunto non ancora pronto (in elaborazione/fallito) o non tuo (RLS).
+        return _make_response(404, "summary_not_found", "Summary not found")
+
+    @app.exception_handler(GraphNotReadyError)
+    async def _on_graph_not_ready(request: Request, exc: GraphNotReadyError) -> JSONResponse:
+        # 404: grafo non ancora estratto, vuoto, o documento non tuo. Indistinguibili.
+        return _make_response(404, "graph_not_found", "Graph not found")
+
+    @app.exception_handler(ExtractionNotReadyError)
+    async def _on_extraction_not_ready(
+        request: Request, exc: ExtractionNotReadyError
+    ) -> JSONResponse:
+        # 409 Conflict: il documento non e' in uno stato estraibile (manca il transcript).
+        return _make_response(409, "extraction_not_ready", str(exc))
+
+    @app.exception_handler(GraphStoreError)
+    async def _on_graph_store_error(request: Request, exc: GraphStoreError) -> JSONResponse:
+        # 503: il backend del grafo (Neo4j) non e' disponibile/configurato.
+        return _make_response(503, "graph_unavailable", "Graph backend error")
 
 
 # -----------------------------------------------------------------------------

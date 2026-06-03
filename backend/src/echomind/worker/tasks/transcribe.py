@@ -228,6 +228,28 @@ async def run_transcribe(
             char_count=char_count,
             source_type=result.source_type.value,
         )
+
+        # Seam M5 (transcript.ready --> extract): concatena l'estrazione del grafo.
+        # BEST-EFFORT: una trascrizione gia' riuscita (e costosa: Whisper) non deve
+        # fallire ne' essere rifatta se l'enqueue di extract va male. In quel caso
+        # logghiamo e basta: l'utente puo' recuperare col trigger manuale
+        # POST /documents/{id}/extract. Import lazy di TaskService per non riaprire
+        # il ciclo di import noto (vedi services/task.py).
+        try:
+            from echomind.services.task import TaskService
+
+            async with session.begin():
+                extract_task = await TaskService(
+                    repository=TaskRepository(session)
+                ).enqueue_extract(owner_id=document.owner_id, document_id=document.id)
+            log.info(
+                "transcribe_chained_extract",
+                task_id=str(task_id),
+                extract_task_id=str(extract_task.id),
+            )
+        except Exception as exc:
+            log.error("transcribe_chain_extract_failed", task_id=str(task_id), error=str(exc))
+
         return TranscribeOutcome(kind="succeeded", result=summary)
 
 

@@ -254,6 +254,97 @@ class Settings(BaseSettings):
         ),
     )
 
+    # -------------------------------------------------------------------------
+    # Knowledge graph — Neo4j (M5)
+    # -------------------------------------------------------------------------
+    # Opzionali in dev (i test mockano il grafo); obbligatori in produzione via
+    # validator (come B2). In dev locale puntano al container Neo4j di compose.
+    neo4j_uri: str | None = Field(
+        default=None,
+        description=(
+            "URI Bolt di Neo4j. Source env: NEO4J_URI. Dev locale: bolt://localhost:7687; "
+            "AuraDB: neo4j+s://xxxx.databases.neo4j.io. Obbligatorio se app_env=production."
+        ),
+    )
+
+    neo4j_user: str = Field(
+        default="neo4j",
+        description="Username Neo4j. Source env: NEO4J_USER. Default 'neo4j'.",
+    )
+
+    neo4j_password: SecretStr | None = Field(
+        default=None,
+        description=(
+            "Password Neo4j. Source env: NEO4J_PASSWORD. Obbligatoria se app_env=production."
+        ),
+    )
+
+    # -------------------------------------------------------------------------
+    # Knowledge extraction — Gemini / Google AI Studio (M5)
+    # -------------------------------------------------------------------------
+    # Un'unica credenziale per estrazione grafo, riassunto ed embeddings. Opzionale
+    # come le altre credenziali esterne: il worker fallisce in modo esplicito
+    # (require_secret) se assente quando serve davvero l'estrazione.
+    gemini_api_key: SecretStr | None = Field(
+        default=None,
+        description=(
+            "API key Google AI Studio per Gemini (estrazione + riassunto + embeddings). "
+            "Source env: GEMINI_API_KEY. Free tier su aistudio.google.com."
+        ),
+    )
+
+    gemini_model: str = Field(
+        default="gemini-flash-latest",
+        description=(
+            "Modello Gemini per estrazione e riassunto. Source env: GEMINI_MODEL. "
+            "ID esatto da AI Studio (es. 'gemini-3-flash'); default segue l'ultimo Flash."
+        ),
+    )
+
+    gemini_embedding_model: str = Field(
+        default="gemini-embedding-001",
+        description="Modello Gemini per gli embeddings. Source env: GEMINI_EMBEDDING_MODEL.",
+    )
+
+    embedding_dimensions: int = Field(
+        default=768,
+        gt=0,
+        description=(
+            "Dimensione del vettore di embedding richiesta al modello e larghezza della "
+            "colonna pgvector. DEVE combaciare con la migration 0005 (vector(768))."
+        ),
+    )
+
+    extraction_max_chunk_chars: int = Field(
+        default=12000,
+        gt=0,
+        description="Dimensione massima (caratteri) di un chunk di testo passato all'LLM.",
+    )
+
+    extraction_chunk_overlap_chars: int = Field(
+        default=500,
+        ge=0,
+        description=(
+            "Sovrapposizione (caratteri) tra chunk consecutivi: preserva il contesto ai confini."
+        ),
+    )
+
+    entity_dedup_similarity_threshold: float = Field(
+        default=0.85,
+        ge=0.0,
+        le=1.0,
+        description="Soglia di similarita' coseno oltre cui due entita' sono considerate la stessa.",
+    )
+
+    extraction_soft_time_limit_seconds: int = Field(
+        default=1800,  # 30 minuti
+        gt=0,
+        description=(
+            "Soft time limit del task di estrazione (secondi). Alto come la trascrizione: "
+            "molte chiamate LLM su documenti lunghi richiedono minuti."
+        ),
+    )
+
     @model_validator(mode="after")
     def _validate_jwt_credentials(self) -> Self:
         """Garantisce che la credential corrispondente all'algoritmo sia presente.
@@ -297,6 +388,32 @@ class Settings(BaseSettings):
             )
         return self
 
+    @model_validator(mode="after")
+    def _validate_extraction_credentials_in_production(self) -> Self:
+        """In produzione, Neo4j e Gemini sono obbligatori (come B2).
+
+        In dev/staging restano opzionali: i test mockano grafo ed LLM, e il
+        worker fallisce in modo esplicito (require_secret / GraphStore) se
+        mancano quando servono davvero. Solo in production l'assenza e' un
+        errore di configurazione che deve fallire all'avvio (fail fast).
+        """
+        if self.app_env != "production":
+            return self
+
+        missing: list[str] = []
+        if self.neo4j_uri is None:
+            missing.append("neo4j_uri")
+        if self.neo4j_password is None:
+            missing.append("neo4j_password")
+        if self.gemini_api_key is None:
+            missing.append("gemini_api_key")
+        if missing:
+            raise ValueError(
+                "In produzione le variabili di knowledge extraction sono obbligatorie. "
+                f"Mancanti: {', '.join(missing)}"
+            )
+        return self
+
     # -------------------------------------------------------------------------
     # Configurazione del loader Pydantic
     # -------------------------------------------------------------------------
@@ -306,7 +423,7 @@ class Settings(BaseSettings):
         env_file=("../.env", ".env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
-        extra="ignore",  # ignora variabili extra in .env (es. NEO4J_*, ANTHROPIC_*: arrivano dopo)
+        extra="ignore",  # ignora variabili extra in .env (es. ANTHROPIC_*, SENTRY_*: arrivano dopo)
     )
 
 
@@ -325,3 +442,36 @@ def get_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]
     # ↑ mypy ignore: Settings() costruisce dai env vars, ma mypy vorrebbe
     # tutti i campi obbligatori passati esplicitamente. Comportamento atteso.
+
+
+def require_secret(secret: SecretStr | None, *, env_name: str, hint: str = "") -> str:
+    """Estrae il valore di un SecretStr trattando vuoto/whitespace come ASSENTE.
+
+    Perche' esiste (debito tecnico saldato da M5, originato in M4): il
+    placeholder vuoto nel .env produce `SecretStr("")`, che NON e' `None`. Un
+    controllo `if secret is None` lascia passare la stringa vuota, che raggiunge
+    il servizio esterno e provoca un errore di autenticazione criptico a runtime,
+    invece di un chiaro errore di configurazione all'uso.
+
+    Centralizziamo qui la regola "key valida = non vuota dopo strip" cosi' tutte
+    le factory del worker (Whisper, Gemini, ...) la condividono.
+
+    Args:
+        secret: il SecretStr da validare (o None se la var non e' settata).
+        env_name: nome della variabile d'ambiente, citato nell'errore.
+        hint: testo opzionale che spiega a cosa serve la key.
+
+    Returns:
+        Il valore della key, garantito non vuoto.
+
+    Raises:
+        RuntimeError: se la key e' assente o vuota/whitespace.
+    """
+    value = secret.get_secret_value() if secret is not None else ""
+    cleaned = value.strip()
+    if not cleaned:
+        message = f"{env_name} mancante o vuoto."
+        if hint:
+            message = f"{message} {hint}"
+        raise RuntimeError(message)
+    return cleaned

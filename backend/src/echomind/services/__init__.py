@@ -14,6 +14,17 @@ from echomind.services.document import (
     DocumentError,
     DocumentNotFoundError,
     DocumentService,
+    ExtractionNotReadyError,
+)
+from echomind.services.graph import (
+    GraphError,
+    GraphNotReadyError,
+    GraphService,
+)
+from echomind.services.graph_store import (
+    GraphData,
+    GraphStore,
+    GraphStoreError,
 )
 from echomind.services.profile import ProfileService
 from echomind.services.storage import (
@@ -21,6 +32,11 @@ from echomind.services.storage import (
     ObjectMetadata,
     StorageError,
     StorageObjectNotFoundError,
+)
+from echomind.services.summary import (
+    SummaryError,
+    SummaryNotFoundError,
+    SummaryService,
 )
 from echomind.services.task import (
     TaskEnqueueError,
@@ -40,10 +56,20 @@ __all__ = [
     "DocumentError",
     "DocumentNotFoundError",
     "DocumentService",
+    "ExtractionNotReadyError",
+    "GraphData",
+    "GraphError",
+    "GraphNotReadyError",
+    "GraphService",
+    "GraphStore",
+    "GraphStoreError",
     "ObjectMetadata",
     "ProfileService",
     "StorageError",
     "StorageObjectNotFoundError",
+    "SummaryError",
+    "SummaryNotFoundError",
+    "SummaryService",
     "TaskEnqueueError",
     "TaskError",
     "TaskNotFoundError",

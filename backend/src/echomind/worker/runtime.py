@@ -25,12 +25,15 @@ import asyncio
 from collections.abc import Coroutine
 from typing import Any
 
+from google import genai
 from openai import OpenAI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from echomind.core.config import get_settings
+from echomind.core.config import get_settings, require_secret
+from echomind.extraction.gemini import GeminiEmbedder, GeminiGraphExtractor, GeminiSummarizer
 from echomind.processing.transcription import OpenAIWhisperTranscriber
+from echomind.services.graph_store import Neo4jGraphStore
 from echomind.services.storage import B2StorageService
 
 # Singleton di PROCESSO (un worker = un processo): inizializzato pigramente al
@@ -106,13 +109,69 @@ def get_worker_transcriber() -> OpenAIWhisperTranscriber:
     global _transcriber
     if _transcriber is None:
         settings = get_settings()
-        if settings.openai_api_key is None:
-            raise RuntimeError(
-                "OPENAI_API_KEY mancante: la trascrizione audio richiede una API key OpenAI"
-            )
+        # require_secret: una OPENAI_API_KEY vuota (placeholder '' nel .env) viene
+        # trattata come assente --> errore chiaro qui, non un 401 criptico da Whisper.
+        api_key = require_secret(
+            settings.openai_api_key,
+            env_name="OPENAI_API_KEY",
+            hint="La trascrizione audio richiede una API key OpenAI.",
+        )
         client = OpenAI(
-            api_key=settings.openai_api_key.get_secret_value(),
+            api_key=api_key,
             organization=settings.openai_org_id,
         )
         _transcriber = OpenAIWhisperTranscriber(client=client, model=settings.whisper_model)
     return _transcriber
+
+
+# Singleton di PROCESSO per il client Gemini e il graph store Neo4j, lazy post-fork
+# (come l'engine e lo storage). Gli adapter di estrazione (extractor/embedder/
+# summarizer) sono wrapper leggeri sul client condiviso: li costruiamo al volo.
+_genai_client: genai.Client | None = None
+_graph_store: Neo4jGraphStore | None = None
+
+
+def _get_genai_client() -> genai.Client:
+    """Client google-genai condiviso dagli adapter di estrazione (lazy, post-fork).
+
+    require_secret: una GEMINI_API_KEY vuota e' trattata come assente (stesso
+    hardening di OPENAI_API_KEY).
+    """
+    global _genai_client
+    if _genai_client is None:
+        settings = get_settings()
+        api_key = require_secret(
+            settings.gemini_api_key,
+            env_name="GEMINI_API_KEY",
+            hint="L'estrazione del grafo richiede una API key Google AI Studio (Gemini).",
+        )
+        _genai_client = genai.Client(api_key=api_key)
+    return _genai_client
+
+
+def get_worker_extractor() -> GeminiGraphExtractor:
+    """Estrattore di grafo Gemini (wrapper leggero sul client condiviso)."""
+    return GeminiGraphExtractor(client=_get_genai_client(), model=get_settings().gemini_model)
+
+
+def get_worker_embedder() -> GeminiEmbedder:
+    """Embedder Gemini per la dedup semantica + la persistenza pgvector."""
+    settings = get_settings()
+    return GeminiEmbedder(
+        client=_get_genai_client(),
+        model=settings.gemini_embedding_model,
+        dimensions=settings.embedding_dimensions,
+    )
+
+
+def get_worker_summarizer() -> GeminiSummarizer:
+    """Summarizer Gemini (map-reduce sui chunk)."""
+    return GeminiSummarizer(client=_get_genai_client(), model=get_settings().gemini_model)
+
+
+def get_worker_graph_store() -> Neo4jGraphStore:
+    """Graph store Neo4j del worker (lazy, post-fork). Solleva se Neo4j non configurato."""
+    global _graph_store
+    if _graph_store is None:
+        _graph_store = Neo4jGraphStore.from_settings(get_settings())
+    return _graph_store

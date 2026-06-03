@@ -21,12 +21,21 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, status
 
-from echomind.api.deps import DocumentServiceDep, TranscriptServiceDep, UserIdDep
+from echomind.api.deps import (
+    DocumentServiceDep,
+    GraphServiceDep,
+    SummaryServiceDep,
+    TranscriptServiceDep,
+    UserIdDep,
+)
 from echomind.schemas.document import (
     DocumentInitUpload,
     DocumentInitUploadResponse,
     DocumentRead,
 )
+from echomind.schemas.graph import GraphEdge, GraphNode, GraphRead
+from echomind.schemas.summary import SummaryRead
+from echomind.schemas.task import TaskEnqueuedResponse
 from echomind.schemas.transcript import TranscriptRead
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -164,6 +173,112 @@ async def get_document_transcript(
 ) -> TranscriptRead:
     transcript = await service.get_by_document(document_id=document_id)
     return TranscriptRead.model_validate(transcript)
+
+
+# -----------------------------------------------------------------------------
+# Extract (M5): avvia l'estrazione del grafo di conoscenza
+# -----------------------------------------------------------------------------
+@router.post(
+    "/{document_id}/extract",
+    response_model=TaskEnqueuedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Avvia l'estrazione del grafo (trigger manuale / re-run)",
+    description=(
+        "Accoda un task 'extract' per il documento (richiede un transcript pronto). "
+        "Ritorna 202 con il task_id: usa GET /tasks/{id} per lo stato, poi "
+        "GET /documents/{id}/graph e /summary per i risultati. L'estrazione parte "
+        "comunque in automatico dopo la trascrizione; questo endpoint serve a "
+        "ri-eseguirla o a recuperarla se l'auto-trigger e' fallito."
+    ),
+    responses={
+        401: {"description": "Token mancante/invalido"},
+        404: {"description": "Documento non trovato o non tuo"},
+        409: {"description": "Transcript non ancora pronto (trascrizione non completata)"},
+        503: {"description": "Broker non disponibile (enqueue fallito)"},
+    },
+)
+async def trigger_extraction(
+    user_id: UserIdDep,
+    document_id: UUID,
+    service: DocumentServiceDep,
+) -> TaskEnqueuedResponse:
+    task = await service.trigger_extraction(owner_id=user_id, document_id=document_id)
+    return TaskEnqueuedResponse(task_id=task.id, status=task.status)
+
+
+# -----------------------------------------------------------------------------
+# Summary (M5): riassunto multilivello
+# -----------------------------------------------------------------------------
+@router.get(
+    "/{document_id}/summary",
+    response_model=SummaryRead,
+    summary="Riassunto multilivello di un documento",
+    description=(
+        "Ritorna il riassunto (panoramica + sezioni) prodotto dall'estrazione. "
+        "404 finche' non e' pronto (in elaborazione o fallita) o se non e' tuo."
+    ),
+    responses={
+        401: {"description": "Token mancante/invalido"},
+        404: {"description": "Riassunto non disponibile (in elaborazione, fallito o non tuo)"},
+    },
+)
+async def get_document_summary(
+    user_id: UserIdDep,
+    document_id: UUID,
+    service: SummaryServiceDep,
+) -> SummaryRead:
+    summary = await service.get_by_document(document_id=document_id)
+    return SummaryRead.model_validate(summary)
+
+
+# -----------------------------------------------------------------------------
+# Graph (M5): grafo di conoscenza (nodi + archi)
+# -----------------------------------------------------------------------------
+@router.get(
+    "/{document_id}/graph",
+    response_model=GraphRead,
+    summary="Grafo di conoscenza di un documento (entita' + relazioni)",
+    description=(
+        "Ritorna nodi e archi del grafo estratto, con la community per ogni nodo. "
+        "404 finche' non e' pronto o se non e' tuo; 503 se Neo4j non e' raggiungibile."
+    ),
+    responses={
+        401: {"description": "Token mancante/invalido"},
+        404: {"description": "Grafo non disponibile (in elaborazione, vuoto o non tuo)"},
+        503: {"description": "Backend del grafo (Neo4j) non disponibile"},
+    },
+)
+async def get_document_graph(
+    user_id: UserIdDep,
+    document_id: UUID,
+    service: GraphServiceDep,
+) -> GraphRead:
+    graph = await service.get_for_document(owner_id=user_id, document_id=document_id)
+    return GraphRead(
+        document_id=document_id,
+        nodes=[
+            GraphNode(
+                id=entity.id,
+                name=entity.name,
+                type=entity.type,
+                description=entity.description,
+                community=entity.community,
+            )
+            for entity in graph.entities
+        ],
+        edges=[
+            GraphEdge(
+                source=relation.source_id,
+                target=relation.target_id,
+                type=relation.type,
+                description=relation.description,
+            )
+            for relation in graph.relations
+        ],
+        node_count=len(graph.entities),
+        relationship_count=len(graph.relations),
+        community_count=len({e.community for e in graph.entities if e.community is not None}),
+    )
 
 
 # -----------------------------------------------------------------------------

@@ -146,6 +146,44 @@ class TaskService:
         )
         return task
 
+    async def enqueue_extract(self, *, owner_id: UUID, document_id: UUID) -> Task:
+        """Crea la riga (status=queued, type=extract) e accoda il task sul broker.
+
+        Il payload porta il document_id: il worker carica il transcript di quel
+        documento (sorgente di verita') e ne estrae il grafo. task_id Celery == id riga.
+
+        Raises:
+            TaskEnqueueError: se l'enqueue sul broker fallisce. La transazione del
+            chiamante fara' rollback, quindi la riga non resta orfana.
+        """
+        payload: dict[str, Any] = {"document_id": str(document_id)}
+        task = await self._repository.create(
+            owner_id=owner_id,
+            task_type=TaskType.EXTRACT.value,
+            payload=payload,
+        )
+
+        # Import lazy: vedi nota in cima al modulo (rottura del ciclo di import).
+        from echomind.worker.tasks.extract import extract_task
+
+        try:
+            extract_task.apply_async(
+                args=[str(task.id)],
+                task_id=str(task.id),
+                queue=WORK_QUEUE,
+            )
+        except Exception as exc:
+            log.error("task_enqueue_failed", task_id=str(task.id), error=str(exc))
+            raise TaskEnqueueError("Impossibile accodare il task di estrazione") from exc
+
+        log.info(
+            "task_enqueued",
+            task_id=str(task.id),
+            task_type=TaskType.EXTRACT.value,
+            document_id=str(document_id),
+        )
+        return task
+
     async def get_task(self, *, task_id: UUID) -> Task:
         """Dettaglio singolo. Solleva TaskNotFoundError se assente/nascosto da RLS."""
         task = await self._repository.get_by_id(task_id)

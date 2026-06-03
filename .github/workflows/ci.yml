@@ -57,7 +57,9 @@ jobs:
     # Raggiungibile come `localhost:5432` dal runner.
     services:
       postgres:
-        image: postgres:16-alpine
+        # pgvector/pgvector:pg16 = Postgres 16 + estensione pgvector (M5): i test
+        # girano contro un DB reale e la migration 0005 fa CREATE EXTENSION vector.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: echomind
           POSTGRES_PASSWORD: echomind_dev

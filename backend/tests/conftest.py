@@ -74,6 +74,9 @@ async def app(test_settings: Settings) -> AsyncIterator[object]:
     # Storage default a None: i test che lo richiedono attivano la fixture
     # `s3_mock_storage` che lo sostituisce con un client moto.
     application.state.storage = None
+    # Graph store default a None (M5): i test del grafo lo sostituiscono con un
+    # FakeGraphStore via dependency_overrides. None --> GET /graph ritorna 503.
+    application.state.graph_store = None
     try:
         yield application
     finally:
@@ -247,6 +250,7 @@ def captured_enqueues(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     non qui -- eager mode confliggerebbe con l'event loop di pytest-asyncio.
     """
     from echomind.worker.tasks.echo import echo_task
+    from echomind.worker.tasks.extract import extract_task
     from echomind.worker.tasks.transcribe import transcribe_task
 
     calls: list[dict[str, Any]] = []
@@ -256,6 +260,9 @@ def captured_enqueues(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
 
     monkeypatch.setattr(echo_task, "apply_async", _fake_apply_async)
     monkeypatch.setattr(transcribe_task, "apply_async", _fake_apply_async)
+    # extract viene accodato anche INDIRETTAMENTE dal seam di transcribe (M5):
+    # patchiamo anche il suo apply_async cosi' nessun test pubblica sul broker.
+    monkeypatch.setattr(extract_task, "apply_async", _fake_apply_async)
     return calls
 
 

@@ -28,8 +28,9 @@ from uuid import UUID
 import magic
 
 from echomind.core.logging import get_logger
-from echomind.db.models import Document
-from echomind.db.repositories import DocumentRepository
+from echomind.db.models import Document, Task
+from echomind.db.repositories import DocumentRepository, TranscriptRepository
+from echomind.services.graph_store import GraphStore
 from echomind.services.storage import (
     B2StorageService,
     StorageObjectNotFoundError,
@@ -52,6 +53,13 @@ class DocumentNotFoundError(DocumentError):
 
 class DocumentAlreadyConfirmedError(DocumentError):
     """confirm_upload chiamato su un documento già 'uploaded' o 'failed'."""
+
+
+class ExtractionNotReadyError(DocumentError):
+    """Trigger di estrazione su un documento senza transcript pronto (--> 409).
+
+    L'estrazione del grafo richiede una trascrizione completata. Finche' non c'e',
+    il documento non e' in uno stato estraibile (Conflict)."""
 
 
 # -----------------------------------------------------------------------------
@@ -117,10 +125,18 @@ class DocumentService:
         repository: DocumentRepository,
         storage: B2StorageService,
         task_service: TaskService | None = None,
+        transcript_repo: TranscriptRepository | None = None,
+        graph_store: GraphStore | None = None,
     ) -> None:
         self._repository = repository
         self._storage = storage
         self._task_service = task_service
+        # transcript_repo: serve a trigger_extraction (verifica che il transcript
+        # esista prima di accodare). graph_store: best-effort cleanup del sottografo
+        # Neo4j sul delete. Entrambi opzionali: un DocumentService senza di essi
+        # resta valido (flussi senza estrazione); il wiring reale li inietta.
+        self._transcript_repo = transcript_repo
+        self._graph_store = graph_store
 
     # -------------------------------------------------------------------------
     # init_upload
@@ -257,6 +273,31 @@ class DocumentService:
         return result
 
     # -------------------------------------------------------------------------
+    # trigger_extraction (M5): avvio manuale / re-run dell'estrazione del grafo
+    # -------------------------------------------------------------------------
+    async def trigger_extraction(self, *, owner_id: UUID, document_id: UUID) -> Task:
+        """Accoda l'estrazione del grafo per un documento gia' trascritto.
+
+        Trigger manuale (l'auto-concatenazione avviene nel worker dopo la
+        trascrizione). Richiede un transcript pronto, altrimenti 409. Stessa
+        transazione della request: enqueue fallito --> rollback --> niente riga orfana.
+
+        Raises:
+            DocumentNotFoundError: documento inesistente o non tuo (RLS). --> 404.
+            ExtractionNotReadyError: nessun transcript ancora. --> 409.
+            TaskEnqueueError: broker irraggiungibile. --> 503.
+        """
+        await self._require_document(document_id)  # 404 se assente / non tuo
+        if self._transcript_repo is None or self._task_service is None:
+            raise ExtractionNotReadyError("Trigger di estrazione non configurato")
+        transcript = await self._transcript_repo.get_by_document_id(document_id)
+        if transcript is None:
+            raise ExtractionNotReadyError(
+                f"Document {document_id} non ha ancora un transcript: trascrizione non completata"
+            )
+        return await self._task_service.enqueue_extract(owner_id=owner_id, document_id=document_id)
+
+    # -------------------------------------------------------------------------
     # READ
     # -------------------------------------------------------------------------
     async def list_documents(
@@ -290,6 +331,22 @@ class DocumentService:
 
         await self._storage.delete_object(document.storage_key)
         await self._repository.delete(document_id)
+
+        # Consistenza cross-store: rimuovi anche il sottografo Neo4j del documento.
+        # Best-effort: il grafo potrebbe non esistere o Neo4j essere giu' -- non
+        # blocchiamo la cancellazione del documento. Summary/embeddings (Postgres)
+        # spariscono da soli via FK ON DELETE CASCADE.
+        if self._graph_store is not None:
+            try:
+                await self._graph_store.delete_document_graph(
+                    owner_id=document.owner_id, document_id=document_id
+                )
+            except Exception as exc:
+                log.warning(
+                    "document_delete_graph_cleanup_failed",
+                    document_id=str(document_id),
+                    error=str(exc),
+                )
 
         log.info(
             "document_deleted",
