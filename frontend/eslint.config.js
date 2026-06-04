@@ -26,7 +26,7 @@ export default tseslint.config(
     // I componenti shadcn/ui esportano sia il componente sia la sua cva
     // (es. Button + buttonVariants): e' un pattern voluto, non un rischio per il
     // fast-refresh. Disattiviamo la regola solo per questa cartella.
-    files: ["src/components/ui/**/*.tsx"],
+    files: ["src/shared/components/ui/**/*.tsx"],
     rules: {
       "react-refresh/only-export-components": "off",
     },
