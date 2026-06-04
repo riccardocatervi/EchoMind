@@ -10,7 +10,7 @@ EchoMind ingerisce testi o registrazioni audio, ne estrae automaticamente i conc
 
 ## Stato attuale
 
-**M2 — Content Ingestion** completata. M0 (project foundation) e M1 (identity & persistence) già mergiate in `develop`.
+**M6 -- Frontend Visualization** completata: M0-M6 mergiate in `develop`. Il frontend (SPA React) vive in [`frontend/`](frontend/README.md); il backend (FastAPI + Celery) in [`backend/`](backend/README.md).
 
 ## Quick start
 
@@ -78,7 +78,9 @@ EchoMind/
 │   ├── src/echomind/
 │   ├── alembic/
 │   └── tests/
-├── frontend/             # React + Vite (placeholder, scaffolding in M6)
+├── frontend/             # SPA React (Vite + TS, feature-based) -- M6
+│   ├── package.json
+│   └── src/              # app/ · shared/ · features/
 ├── infra/
 │   ├── docker-compose.dev.yml
 │   └── postgres-init/    # script di bootstrap ruoli Postgres
