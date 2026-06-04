@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2, RefreshCw } from "lucide-react";
+import { ArrowLeft, Loader2, Network, RefreshCw } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { isApiError } from "@/shared/api/axios";
-import { Button } from "@/shared/components/ui/button";
+import { Button, buttonVariants } from "@/shared/components/ui/button";
 import { Card, CardContent } from "@/shared/components/ui/card";
 import { Skeleton } from "@/shared/components/ui/skeleton";
+import { cn } from "@/shared/lib/utils";
 import { useTriggerExtraction } from "@/features/documents/api/mutations";
 import { useDocument } from "@/features/documents/api/queries";
 import { PipelineStatus, type PipelineStage } from "@/features/documents/components/PipelineStatus";
@@ -145,10 +146,11 @@ export function DocumentDetailPage() {
 
           {summary && <SummaryView summary={summary} />}
 
-          {stage === "ready" && (
-            <p className="text-sm text-muted-foreground">
-              Il grafo e&apos; pronto. La vista interattiva arriva nel prossimo checkpoint.
-            </p>
+          {graph && graph.nodes.length > 0 && (
+            <Link to={`/documents/${documentId}/graph`} className={cn(buttonVariants(), "w-fit")}>
+              <Network aria-hidden="true" />
+              Esplora il grafo ({graph.node_count} nodi)
+            </Link>
           )}
         </>
       )}
