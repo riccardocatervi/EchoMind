@@ -7,7 +7,7 @@ import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { AuthShell } from "@/features/auth/components/AuthShell";
 import { useAuth } from "@/features/auth/hooks/useAuth";
-import { credentialsSchema } from "@/features/auth/schemas/credentials";
+import { credentialsSchema } from "@/features/auth/schemas/authSchema";
 
 export function SignupPage() {
   const { status, signUp } = useAuth();
