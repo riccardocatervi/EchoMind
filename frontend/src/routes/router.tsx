@@ -4,7 +4,8 @@ import { AppShell } from "@/components/AppShell";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { ProtectedRoute } from "@/features/auth/ProtectedRoute";
 import { SignupPage } from "@/features/auth/SignupPage";
-import { Home } from "@/routes/Home";
+import { DocumentDetailPage } from "@/features/documents/DocumentDetailPage";
+import { DocumentsPage } from "@/features/documents/DocumentsPage";
 
 /**
  * Albero delle rotte:
@@ -22,7 +23,10 @@ export const router = createBrowserRouter([
     children: [
       {
         element: <AppShell />,
-        children: [{ index: true, element: <Home /> }],
+        children: [
+          { index: true, element: <DocumentsPage /> },
+          { path: "documents/:documentId", element: <DocumentDetailPage /> },
+        ],
       },
     ],
   },
