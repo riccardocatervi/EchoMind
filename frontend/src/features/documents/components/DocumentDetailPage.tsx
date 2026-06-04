@@ -16,6 +16,7 @@ import { graphKeys } from "@/features/graph/api/keys";
 import { useGraph } from "@/features/graph/api/queries";
 import { summaryKeys } from "@/features/summary/api/keys";
 import { useSummary } from "@/features/summary/api/queries";
+import { SummaryView } from "@/features/summary/components/SummaryView";
 import { useTask } from "@/features/tasks/api/queries";
 import { useTranscript } from "@/features/transcripts/api/queries";
 import { TranscriptCard } from "@/features/transcripts/components/TranscriptCard";
@@ -142,9 +143,11 @@ export function DocumentDetailPage() {
 
           {transcript && <TranscriptCard transcript={transcript} />}
 
+          {summary && <SummaryView summary={summary} />}
+
           {stage === "ready" && (
             <p className="text-sm text-muted-foreground">
-              Riassunto e grafo pronti. Le rispettive viste arrivano nei prossimi checkpoint.
+              Il grafo e&apos; pronto. La vista interattiva arriva nel prossimo checkpoint.
             </p>
           )}
         </>
