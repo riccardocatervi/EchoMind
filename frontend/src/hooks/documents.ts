@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { deleteDocument, getDocument, listDocuments } from "@/api/documents";
 import { queryKeys } from "@/hooks/queryKeys";
 import type { UUID } from "@/types/api";
+import { useState } from "react";
 
 export function useDocuments(params: { limit?: number; offset?: number } = {}) {
   return useQuery({

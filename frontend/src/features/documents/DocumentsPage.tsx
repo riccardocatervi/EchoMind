@@ -1,6 +1,7 @@
 import { AlertTriangle, FileText } from "lucide-react";
 
 import { DocumentCard } from "@/features/documents/DocumentCard";
+import { UploadDialog } from "@/features/documents/UploadDialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDocuments } from "@/hooks/documents";
@@ -18,7 +19,7 @@ export function DocumentsPage() {
             Carica testi o audio e trasformali in grafi di conoscenza.
           </p>
         </div>
-        {/* Il pulsante di upload viene aggiunto nel CP5. */}
+        <UploadDialog />
       </header>
 
       {isLoading && <DocumentsSkeleton />}

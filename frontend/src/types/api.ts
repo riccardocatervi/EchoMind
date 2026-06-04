@@ -153,3 +153,6 @@ export const ALLOWED_MIME_TYPES = [
 ] as const;
 
 export type AllowedMimeType = (typeof ALLOWED_MIME_TYPES)[number];
+
+/** Limite dimensione upload (mirror del default backend MAX_UPLOAD_SIZE_BYTES). */
+export const MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024;
