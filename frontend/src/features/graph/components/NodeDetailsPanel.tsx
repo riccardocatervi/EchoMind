@@ -15,10 +15,12 @@ export function NodeDetailsPanel({
   node,
   graph,
   onClose,
+  onSelectNode,
 }: {
   node: GraphNode;
   graph: GraphRead;
   onClose: () => void;
+  onSelectNode: (id: string) => void;
 }) {
   const nameById = new Map(graph.nodes.map((n) => [n.id, n.name]));
   const neighbors: Neighbor[] = graph.edges
@@ -30,7 +32,7 @@ export function NodeDetailsPanel({
     });
 
   return (
-    <aside className="absolute right-4 top-4 z-10 max-h-[calc(100%-2rem)] w-72 overflow-y-auto rounded-lg border bg-card p-4 shadow-lg">
+    <aside className="absolute inset-x-4 bottom-4 z-10 max-h-[50%] overflow-y-auto rounded-lg border bg-card p-4 shadow-lg sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-4 sm:max-h-[calc(100%-2rem)] sm:w-72">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-medium leading-tight">{node.name}</p>
@@ -59,12 +61,19 @@ export function NodeDetailsPanel({
           <p className="mb-1 text-xs font-medium text-muted-foreground">
             Relazioni ({neighbors.length})
           </p>
-          <ul className="space-y-1 text-sm">
+          <ul className="space-y-0.5">
             {neighbors.map((neighbor, index) => (
-              <li key={index} className="flex flex-wrap items-center gap-1">
-                <span className="text-muted-foreground">{neighbor.outgoing ? "->" : "<-"}</span>
-                <span className="rounded bg-muted px-1 text-xs">{neighbor.relation}</span>
-                <span className="truncate">{neighbor.name}</span>
+              <li key={index}>
+                <button
+                  type="button"
+                  onClick={() => onSelectNode(neighbor.id)}
+                  className="flex w-full cursor-pointer flex-wrap items-center gap-1 rounded px-1 py-1 text-left text-sm transition-colors hover:bg-accent"
+                  title={`Vai a ${neighbor.name}`}
+                >
+                  <span className="text-muted-foreground">{neighbor.outgoing ? "->" : "<-"}</span>
+                  <span className="rounded bg-muted px-1 text-xs">{neighbor.relation}</span>
+                  <span className="truncate">{neighbor.name}</span>
+                </button>
               </li>
             ))}
           </ul>
