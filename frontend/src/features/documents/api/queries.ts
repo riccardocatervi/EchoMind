@@ -15,5 +15,8 @@ export function useDocument(documentId: string | undefined) {
     queryKey: documentKeys.detail(documentId ?? ""),
     queryFn: () => getDocument(documentId as string),
     enabled: Boolean(documentId),
+    refetchInterval:(query) =>{
+      
+    }
   });
 }
