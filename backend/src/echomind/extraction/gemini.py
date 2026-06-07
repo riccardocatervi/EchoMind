@@ -21,26 +21,43 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types
 
+from echomind.core.language import language_name
 from echomind.extraction.errors import EmbeddingError, LLMError
 from echomind.extraction.schema import ChunkGraph, DocumentSummary
 
-_EXTRACTION_SYSTEM_PROMPT = (
-    "Sei un estrattore esperto di knowledge graph. Dal testo individua le ENTITA' "
-    "chiave (concetti, persone, organizzazioni, luoghi, eventi) e le RELAZIONI "
-    "esplicite tra esse. Regole: usa la stessa lingua del testo per nomi e "
-    "descrizioni; nomi concisi e canonici (senza articoli); estrai solo relazioni "
-    "supportate dal testo; evita duplicati. Restituisci solo il JSON nello schema."
-)
 
-_SUMMARY_SYSTEM_PROMPT = (
-    "Sei un assistente che riassume documenti. Produci una panoramica complessiva "
-    "(un paragrafo) e alcune sezioni tematiche (titolo + contenuto), nella stessa "
-    "lingua del testo. Restituisci solo il JSON nello schema."
-)
+def _extraction_system_prompt(language: str) -> str:
+    """Prompt di sistema dell'estrazione, vincolato alla lingua di OUTPUT.
 
-_CHUNK_SUMMARY_INSTRUCTION = (
-    "Riassumi in modo conciso il seguente testo, mantenendo i concetti chiave e la sua lingua:"
-)
+    A differenza della versione M5 ("stessa lingua del testo"), nomi e descrizioni
+    vengono prodotti in `language` (es. Italian/English), mentre i nomi propri
+    (persone, luoghi, organizzazioni) restano invariati.
+    """
+    name = language_name(language)
+    return (
+        "Sei un estrattore esperto di knowledge graph. Dal testo individua le ENTITA' "
+        "chiave (concetti, persone, organizzazioni, luoghi, eventi) e le RELAZIONI "
+        f"esplicite tra esse. Regole: scrivi nomi e descrizioni in {name}, mantenendo "
+        "invariati i nomi propri; nomi concisi e canonici (senza articoli); estrai solo "
+        "relazioni supportate dal testo; evita duplicati. Restituisci solo il JSON nello schema."
+    )
+
+
+def _summary_system_prompt(language: str) -> str:
+    """Prompt di sistema del riassunto finale, vincolato alla lingua di OUTPUT."""
+    name = language_name(language)
+    return (
+        "Sei un assistente che riassume documenti. Produci una panoramica complessiva "
+        "(un paragrafo) e alcune sezioni tematiche (titolo + contenuto), scrivendo "
+        f"interamente in {name}. Restituisci solo il JSON nello schema."
+    )
+
+
+def _chunk_summary_instruction(language: str) -> str:
+    """Istruzione del riassunto per-chunk (map), vincolata alla lingua di OUTPUT."""
+    name = language_name(language)
+    return f"Riassumi in modo conciso il seguente testo in {name}, mantenendo i concetti chiave:"
+
 
 _DEFAULT_EMBED_BATCH = 100
 
@@ -59,13 +76,13 @@ class GeminiGraphExtractor:
         self._client = client
         self._model = model
 
-    def extract(self, text: str) -> ChunkGraph:
+    def extract(self, text: str, *, language: str) -> ChunkGraph:
         try:
             response = self._client.models.generate_content(
                 model=self._model,
                 contents=text,
                 config=types.GenerateContentConfig(
-                    system_instruction=_EXTRACTION_SYSTEM_PROMPT,
+                    system_instruction=_extraction_system_prompt(language),
                     response_mime_type="application/json",
                     response_schema=ChunkGraph,
                     temperature=0.0,
@@ -129,20 +146,20 @@ class GeminiSummarizer:
         self._client = client
         self._model = model
 
-    def summarize(self, chunks: Sequence[str]) -> DocumentSummary:
+    def summarize(self, chunks: Sequence[str], *, language: str) -> DocumentSummary:
         if not chunks:
             return DocumentSummary(overview="", sections=[])
         if len(chunks) == 1:
-            return self._synthesize(chunks[0])
+            return self._synthesize(chunks[0], language=language)
         # map: riassunto conciso per chunk; reduce: sintesi strutturata finale.
-        partials = [self._summarize_chunk(chunk) for chunk in chunks]
-        return self._synthesize("\n\n".join(partials))
+        partials = [self._summarize_chunk(chunk, language=language) for chunk in chunks]
+        return self._synthesize("\n\n".join(partials), language=language)
 
-    def _summarize_chunk(self, text: str) -> str:
+    def _summarize_chunk(self, text: str, *, language: str) -> str:
         try:
             response = self._client.models.generate_content(
                 model=self._model,
-                contents=f"{_CHUNK_SUMMARY_INSTRUCTION}\n\n{text}",
+                contents=f"{_chunk_summary_instruction(language)}\n\n{text}",
                 config=types.GenerateContentConfig(temperature=0.2),
             )
         except Exception as exc:
@@ -151,13 +168,13 @@ class GeminiSummarizer:
             ) from exc
         return response.text or ""
 
-    def _synthesize(self, text: str) -> DocumentSummary:
+    def _synthesize(self, text: str, *, language: str) -> DocumentSummary:
         try:
             response = self._client.models.generate_content(
                 model=self._model,
                 contents=text,
                 config=types.GenerateContentConfig(
-                    system_instruction=_SUMMARY_SYSTEM_PROMPT,
+                    system_instruction=_summary_system_prompt(language),
                     response_mime_type="application/json",
                     response_schema=DocumentSummary,
                     temperature=0.2,

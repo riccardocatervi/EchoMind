@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
 
+from echomind.core.language import DEFAULT_LANGUAGE
 from echomind.extraction.chunking import chunk_text
 from echomind.extraction.community import detect_communities
 from echomind.extraction.dedup import (
@@ -61,12 +62,17 @@ def extract_knowledge(
     max_chunk_chars: int,
     chunk_overlap_chars: int,
     dedup_threshold: float,
+    language: str = DEFAULT_LANGUAGE,
 ) -> ExtractionResult:
     """Trasforma un testo (transcript) in grafo + riassunto + embeddings.
 
     Deterministico a parita' di input + adapter. Tollerante al vuoto: testo o
     estrazione vuoti producono un risultato vuoto coerente (0 nodi/archi), non un
     errore -- la decisione su cosa farne spetta al worker.
+
+    `language` (codice it/en) e' la lingua di OUTPUT: nomi/descrizioni del grafo e
+    il riassunto vengono prodotti in quella lingua, NON nella lingua del documento.
+    Default difensivo a italiano; il worker passa la preferenza dell'utente (CP3).
     """
     chunks = chunk_text(text, max_chars=max_chunk_chars, overlap=chunk_overlap_chars)
 
@@ -74,7 +80,7 @@ def extract_knowledge(
     raw_entities: list[ExtractedEntity] = []
     raw_relations: list[ExtractedRelation] = []
     for chunk in chunks:
-        graph = extractor.extract(chunk)
+        graph = extractor.extract(chunk, language=language)
         raw_entities.extend(graph.entities)
         raw_relations.extend(graph.relations)
 
@@ -137,8 +143,8 @@ def extract_knowledge(
         )
         embeddings.append(EntityVector(entity_id=eid, name=entity.name, vector=entity.embedding))
 
-    # 7. Riassunto multilivello.
-    summary = summarizer.summarize(chunks)
+    # 7. Riassunto multilivello (nella lingua di output scelta).
+    summary = summarizer.summarize(chunks, language=language)
 
     meta: dict[str, Any] = {
         "chunk_count": len(chunks),

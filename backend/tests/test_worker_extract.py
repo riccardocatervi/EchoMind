@@ -78,7 +78,7 @@ class _FakeExtractor:
     def __init__(self, *, exc: Exception | None = None) -> None:
         self._exc = exc
 
-    def extract(self, text: str) -> ChunkGraph:
+    def extract(self, text: str, *, language: str) -> ChunkGraph:
         if self._exc is not None:
             raise self._exc
         return ChunkGraph(
@@ -96,7 +96,7 @@ class _FakeEmbedder:
 
 
 class _FakeSummarizer:
-    def summarize(self, chunks: Sequence[str]) -> DocumentSummary:
+    def summarize(self, chunks: Sequence[str], *, language: str) -> DocumentSummary:
         return DocumentSummary(
             overview="panoramica", sections=[SummarySection(title="Tema", content="dettaglio")]
         )
