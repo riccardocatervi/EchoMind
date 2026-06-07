@@ -33,10 +33,16 @@ from celery.exceptions import Reject
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from echomind.core.config import get_settings
+from echomind.core.language import DEFAULT_LANGUAGE
 from echomind.core.logging import get_logger
 from echomind.db.models import Document
 from echomind.db.models.task import TERMINAL_STATUSES
-from echomind.db.repositories import DocumentRepository, TaskRepository, TranscriptRepository
+from echomind.db.repositories import (
+    DocumentRepository,
+    ProfileRepository,
+    TaskRepository,
+    TranscriptRepository,
+)
 from echomind.processing import AUDIO_MIME_TYPES, ProcessingError, Transcriber, process_media
 from echomind.services.storage import StorageError, StorageObjectNotFoundError
 from echomind.worker.celery_app import celery_app
@@ -246,13 +252,23 @@ async def run_transcribe(
             from echomind.services.task import TaskService
 
             async with session.begin():
+                # Legge la lingua di output preferita del proprietario del documento.
+                # La sessione e' di sistema (no RLS): il worker e' un componente fidato.
+                # Fallback a italiano se il profilo non esiste ancora (raro ma difensivo).
+                profile = await ProfileRepository(session).get_by_id(document.owner_id)
+                language = profile.preferred_language if profile is not None else DEFAULT_LANGUAGE
                 extract_task = await TaskService(
                     repository=TaskRepository(session)
-                ).enqueue_extract(owner_id=document.owner_id, document_id=document.id)
+                ).enqueue_extract(
+                    owner_id=document.owner_id,
+                    document_id=document.id,
+                    language=language,
+                )
             log.info(
                 "transcribe_chained_extract",
                 task_id=str(task_id),
                 extract_task_id=str(extract_task.id),
+                language=language,
             )
         except Exception as exc:
             log.error("transcribe_chain_extract_failed", task_id=str(task_id), error=str(exc))

@@ -24,6 +24,7 @@ from fastapi import APIRouter, Query, status
 from echomind.api.deps import (
     DocumentServiceDep,
     GraphServiceDep,
+    ProfileServiceDep,
     SummaryServiceDep,
     TranscriptServiceDep,
     UserIdDep,
@@ -201,8 +202,16 @@ async def trigger_extraction(
     user_id: UserIdDep,
     document_id: UUID,
     service: DocumentServiceDep,
+    profile_service: ProfileServiceDep,
 ) -> TaskEnqueuedResponse:
-    task = await service.trigger_extraction(owner_id=user_id, document_id=document_id)
+    # Risolve la lingua di output dal profilo utente: il worker la usa
+    # per decidere in quale lingua produrre grafo e riassunto.
+    profile = await profile_service.get_or_create(user_id)
+    task = await service.trigger_extraction(
+        owner_id=user_id,
+        document_id=document_id,
+        language=profile.preferred_language,
+    )
     return TaskEnqueuedResponse(task_id=task.id, status=task.status)
 
 

@@ -29,6 +29,7 @@ from celery.exceptions import Reject
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from echomind.core.config import get_settings
+from echomind.core.language import normalize_language
 from echomind.core.logging import get_logger
 from echomind.db.models import Transcript
 from echomind.db.models.task import TERMINAL_STATUSES
@@ -143,6 +144,12 @@ async def run_extract(
 
         log.info("extract_task_running", task_id=str(task_id), attempt=attempt + 1)
 
+        # Lingua di output: letta dal payload (stampata da enqueue_extract).
+        # `normalize_language` garantisce un codice valido anche su payload
+        # vecchi (senza "language") o manomessi: in quel caso torna al default
+        # italiano anziche' propagare una stringa arbitraria al modello LLM.
+        language = normalize_language(task.payload.get("language"))
+
         # 2. Transcript assente --> fallimento permanente (l'estrazione lo richiede).
         if transcript is None:
             error = "Transcript non trovato: l'estrazione richiede una trascrizione pronta"
@@ -165,6 +172,7 @@ async def run_extract(
                 max_chunk_chars=max_chunk_chars,
                 chunk_overlap_chars=chunk_overlap_chars,
                 dedup_threshold=dedup_threshold,
+                language=language,
             )
             await graph_store.replace_document_graph(
                 owner_id=owner_id,
