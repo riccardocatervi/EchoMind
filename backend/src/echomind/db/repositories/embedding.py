@@ -4,6 +4,11 @@ Scritto dal worker (sessione di sistema). Pattern di scrittura: **replace-by-doc
 (delete di tutte le righe del documento + insert delle nuove). Le righe sono
 immutabili e si rigenerano in blocco a ogni estrazione, quindi non serve un upsert
 per-riga; il replace garantisce l'idempotenza della ri-estrazione.
+
+Per il RAG (M8): `search_similar` esegue retrieval vettoriale via pgvector
+(distanza coseno) scoped per document_id. La sessione puo' essere RLS-bound (API)
+o di sistema (worker/test); in ogni caso si filtra esplicitamente per owner_id
+(defense-in-depth oltre la policy RLS).
 """
 
 from __future__ import annotations
@@ -16,6 +21,15 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from echomind.db.models import EntityEmbedding
+
+
+@dataclass(frozen=True, slots=True)
+class SimilarEntity:
+    """Un'entita' restituita dal retrieval vettoriale, con la sua distanza."""
+
+    entity_id: UUID
+    name: str
+    distance: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,3 +85,40 @@ class EmbeddingRepository:
             .where(EntityEmbedding.document_id == document_id)
         )
         return result.scalar_one()
+
+    async def search_similar(
+        self,
+        *,
+        document_id: UUID,
+        owner_id: UUID,
+        query_vector: list[float],
+        k: int,
+    ) -> list[SimilarEntity]:
+        """Restituisce le `k` entita' piu' vicine al `query_vector` (distanza coseno).
+
+        Scoped per document_id: il retrieval e' sempre per-documento.
+        Il filtro owner_id e' defense-in-depth oltre la policy RLS della sessione.
+        L'ordinamento e' per distanza crescente (0 = identico, 1 = ortogonale).
+        """
+        dist = EntityEmbedding.embedding.cosine_distance(query_vector)
+        result = await self._session.execute(
+            select(
+                EntityEmbedding.entity_id,
+                EntityEmbedding.name,
+                dist.label("distance"),
+            )
+            .where(
+                EntityEmbedding.document_id == document_id,
+                EntityEmbedding.owner_id == owner_id,
+            )
+            .order_by(dist)
+            .limit(k)
+        )
+        return [
+            SimilarEntity(
+                entity_id=row.entity_id,
+                name=row.name,
+                distance=float(row.distance),
+            )
+            for row in result
+        ]

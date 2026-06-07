@@ -69,6 +69,16 @@ class _FakeGraphStore:
     async def get_document_graph(self, *, owner_id: UUID, document_id: UUID) -> GraphData:
         return GraphData(entities=[], relations=[])
 
+    async def get_neighborhood(
+        self,
+        *,
+        owner_id: UUID,
+        document_id: UUID,
+        entity_ids: Sequence[Any],
+        hops: int = 1,
+    ) -> GraphData:
+        return GraphData(entities=[], relations=[])
+
     async def delete_document_graph(self, *, owner_id: UUID, document_id: UUID) -> None: ...
 
     async def delete_owner_graph(self, *, owner_id: UUID) -> None: ...

@@ -65,6 +65,23 @@ class GraphStore(Protocol):
 
     async def get_document_graph(self, *, owner_id: UUID, document_id: UUID) -> GraphData: ...
 
+    async def get_neighborhood(
+        self,
+        *,
+        owner_id: UUID,
+        document_id: UUID,
+        entity_ids: Sequence[UUID],
+        hops: int = 1,
+    ) -> GraphData:
+        """Restituisce i nodi seme + il loro vicinato fino a `hops` passi.
+
+        Usato dal RAG (M8): i nodi recuperati dal retrieval vettoriale
+        (entity_ids) diventano i semi da cui si espande il grafo locale.
+        `hops=1` include i vicini diretti; hops>1 allarga la finestra.
+        Il risultato e' sempre filtrato per owner + document (multi-tenancy).
+        """
+        ...
+
     async def delete_document_graph(self, *, owner_id: UUID, document_id: UUID) -> None: ...
 
     async def delete_owner_graph(self, *, owner_id: UUID) -> None:
@@ -118,6 +135,44 @@ MATCH (s:Entity {owner_id: $owner_id, document_id: $document_id})
       (t:Entity {owner_id: $owner_id, document_id: $document_id})
 RETURN s.id AS source, t.id AS target, r.type AS type, r.description AS description
 """
+
+
+# Vicinato RAG (M8): nodi seme + vicini a `hops` passi (direzione libera) +
+# tutti gli archi tra i nodi del vicinato. Il numero di hops e' iniettato via
+# .format() al momento della chiamata (e' un intero validato dalle Settings,
+# non un input utente). Il pattern {{ }} produce { } letterali nell'f-string.
+def _neighborhood_nodes_cypher(hops: int) -> str:
+    """Nodi seme + vicini fino a `hops` passi (UNION deduplica automaticamente)."""
+    rel = f"[:RELATES*1..{hops}]"
+    return (
+        "MATCH (seed:Entity {owner_id: $owner_id, document_id: $document_id})\n"
+        "WHERE seed.id IN $entity_ids\n"
+        "RETURN seed.id AS id, seed.name AS name, seed.type AS type,\n"
+        "       seed.description AS description, seed.community AS community\n"
+        "UNION\n"
+        "MATCH (seed:Entity {owner_id: $owner_id, document_id: $document_id})\n"
+        "WHERE seed.id IN $entity_ids\n"
+        f"MATCH (seed)-{rel}-(nbr:Entity {{owner_id: $owner_id, document_id: $document_id}})\n"
+        "RETURN DISTINCT nbr.id AS id, nbr.name AS name, nbr.type AS type,\n"
+        "       nbr.description AS description, nbr.community AS community"
+    )
+
+
+def _neighborhood_edges_cypher(hops: int) -> str:
+    """Archi tra i nodi del vicinato (semi + vicini fino a `hops` passi)."""
+    rel = f"[:RELATES*1..{hops}]"
+    return (
+        "MATCH (seed:Entity {owner_id: $owner_id, document_id: $document_id})\n"
+        "WHERE seed.id IN $entity_ids\n"
+        f"OPTIONAL MATCH (seed)-{rel}-(nbr:Entity {{owner_id: $owner_id, document_id: $document_id}})\n"
+        "WITH collect(DISTINCT seed.id) + collect(DISTINCT nbr.id) AS all_ids\n"
+        "MATCH (s:Entity {owner_id: $owner_id, document_id: $document_id})\n"
+        "      -[r:RELATES]->\n"
+        "      (t:Entity {owner_id: $owner_id, document_id: $document_id})\n"
+        "WHERE s.id IN all_ids AND t.id IN all_ids\n"
+        "RETURN DISTINCT s.id AS source, t.id AS target,\n"
+        "       r.type AS type, r.description AS description"
+    )
 
 
 class Neo4jGraphStore:
@@ -258,6 +313,104 @@ class Neo4jGraphStore:
         tx: ManagedTransaction, owner_id: str, document_id: str
     ) -> list[dict[str, Any]]:
         result = tx.run(_READ_EDGES, owner_id=owner_id, document_id=document_id)
+        return [record.data() for record in result]
+
+    # -------------------------------------------------------------------------
+    # Neighborhood RAG (M8)
+    # -------------------------------------------------------------------------
+    async def get_neighborhood(
+        self,
+        *,
+        owner_id: UUID,
+        document_id: UUID,
+        entity_ids: Sequence[UUID],
+        hops: int = 1,
+    ) -> GraphData:
+        """Nodi seme + vicinato `hops`-hop + archi del sottografo locale."""
+        return await asyncio.to_thread(
+            self._get_neighborhood_sync,
+            str(owner_id),
+            str(document_id),
+            [str(eid) for eid in entity_ids],
+            hops,
+        )
+
+    def _get_neighborhood_sync(
+        self,
+        owner_id: str,
+        document_id: str,
+        entity_ids: list[str],
+        hops: int,
+    ) -> GraphData:
+        try:
+            with self._driver.session() as session:
+                node_rows = session.execute_read(
+                    self._neighborhood_nodes_tx,
+                    owner_id,
+                    document_id,
+                    entity_ids,
+                    hops,
+                )
+                edge_rows = session.execute_read(
+                    self._neighborhood_edges_tx,
+                    owner_id,
+                    document_id,
+                    entity_ids,
+                    hops,
+                )
+        except Exception as exc:
+            raise _to_graph_store_error(exc) from exc
+        entities = [
+            Entity(
+                id=UUID(row["id"]),
+                name=row["name"],
+                type=row["type"],
+                description=row["description"] or "",
+                community=row["community"],
+            )
+            for row in node_rows
+        ]
+        relations = [
+            Relation(
+                source_id=UUID(row["source"]),
+                target_id=UUID(row["target"]),
+                type=row["type"],
+                description=row["description"] or "",
+            )
+            for row in edge_rows
+        ]
+        return GraphData(entities=entities, relations=relations)
+
+    @staticmethod
+    def _neighborhood_nodes_tx(
+        tx: ManagedTransaction,
+        owner_id: str,
+        document_id: str,
+        entity_ids: list[str],
+        hops: int,
+    ) -> list[dict[str, Any]]:
+        result = tx.run(
+            _neighborhood_nodes_cypher(hops),
+            owner_id=owner_id,
+            document_id=document_id,
+            entity_ids=entity_ids,
+        )
+        return [record.data() for record in result]
+
+    @staticmethod
+    def _neighborhood_edges_tx(
+        tx: ManagedTransaction,
+        owner_id: str,
+        document_id: str,
+        entity_ids: list[str],
+        hops: int,
+    ) -> list[dict[str, Any]]:
+        result = tx.run(
+            _neighborhood_edges_cypher(hops),
+            owner_id=owner_id,
+            document_id=document_id,
+            entity_ids=entity_ids,
+        )
         return [record.data() for record in result]
 
     # -------------------------------------------------------------------------
