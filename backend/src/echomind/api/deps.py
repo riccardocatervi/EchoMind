@@ -158,19 +158,35 @@ UnauthenticatedSessionDep = Annotated[AsyncSession, Depends(get_db_session_unaut
 # -----------------------------------------------------------------------------
 # Service layer dependencies
 # -----------------------------------------------------------------------------
+def _build_profile_service(
+    session: AsyncSession,
+    session_maker: async_sessionmaker[AsyncSession],
+    settings: Settings,
+) -> ProfileService:
+    """ProfileService con auto-seed di auth.users abilitato SOLO in sviluppo.
+
+    In development l'utente Supabase non esiste nel Postgres locale: il seed
+    rende soddisfacibile la FK profiles -> auth.users al primo accesso. In
+    staging/produzione il flag resta False (auth.users e' gestito da Supabase).
+    """
+    return ProfileService(
+        repository=ProfileRepository(session),
+        system_session_maker=session_maker,
+        seed_auth_user=settings.app_env == "development",
+    )
+
+
 async def get_profile_service(
     session: SessionDep,
     session_maker: SessionMakerDep,
+    settings: SettingsDep,
 ) -> ProfileService:
     """Costruisce un ProfileService con la sessione RLS-bound dell'utente.
 
     Il `session_maker` aggiuntivo serve al service per aprire una seconda
     sessione "system" (non-RLS) durante il just-in-time provisioning.
     """
-    return ProfileService(
-        repository=ProfileRepository(session),
-        system_session_maker=session_maker,
-    )
+    return _build_profile_service(session, session_maker, settings)
 
 
 ProfileServiceDep = Annotated[ProfileService, Depends(get_profile_service)]
@@ -201,6 +217,7 @@ async def get_document_service(
     session: SessionDep,
     storage: StorageServiceDep,
     session_maker: SessionMakerDep,
+    settings: SettingsDep,
 ) -> DocumentService:
     """Costruisce un DocumentService.
 
@@ -212,10 +229,7 @@ async def get_document_service(
     pattern just-in-time provisioning di M1 applicato a tutti gli endpoint
     che inseriscono risorse "owned by user".
     """
-    profile_service = ProfileService(
-        repository=ProfileRepository(session),
-        system_session_maker=session_maker,
-    )
+    profile_service = _build_profile_service(session, session_maker, settings)
     await profile_service.get_or_create(user_id)
 
     # graph_store: opzionale (None se Neo4j non configurato). Serve solo al
@@ -241,6 +255,7 @@ async def get_task_service(
     user_id: UserIdDep,
     session: SessionDep,
     session_maker: SessionMakerDep,
+    settings: SettingsDep,
 ) -> TaskService:
     """Costruisce un TaskService con la sessione RLS-bound dell'utente.
 
@@ -248,10 +263,7 @@ async def get_task_service(
     `tasks.owner_id` ha FK a `profiles(id)`, quindi senza il profile l'INSERT
     fallirebbe. Stesso pattern riusabile per ogni risorsa owned-by-user.
     """
-    profile_service = ProfileService(
-        repository=ProfileRepository(session),
-        system_session_maker=session_maker,
-    )
+    profile_service = _build_profile_service(session, session_maker, settings)
     await profile_service.get_or_create(user_id)
 
     return TaskService(repository=TaskRepository(session))

@@ -418,6 +418,73 @@ class TestDeleteDocument:
         mock_storage.delete_object.assert_not_awaited()
         mock_repo.delete.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_revokes_active_tasks_before_b2_delete(
+        self,
+        mock_repo: AsyncMock,
+        mock_storage: AsyncMock,
+    ) -> None:
+        """Con task_service, la revoca precede il delete B2 e il delete DB."""
+        doc = _make_document(storage_key="users/abc/xyz.pdf")
+        mock_repo.get_by_id.return_value = doc
+        mock_repo.delete.return_value = True
+
+        call_order: list[str] = []
+
+        # Traccia l'ordine: revoca --> B2 --> DB
+        mock_task_service = AsyncMock()
+
+        async def _track_revoke(document_id: UUID) -> None:
+            call_order.append("revoke")
+
+        async def _track_b2(key: str) -> None:
+            call_order.append("b2")
+
+        async def _track_db(doc_id: UUID) -> bool:
+            call_order.append("db")
+            return True
+
+        mock_task_service.revoke_active_tasks_for_document.side_effect = _track_revoke
+        mock_storage.delete_object.side_effect = _track_b2
+        mock_repo.delete.side_effect = _track_db
+
+        svc = DocumentService(
+            repository=mock_repo,
+            storage=mock_storage,
+            task_service=mock_task_service,
+        )
+        await svc.delete_document(document_id=doc.id)
+
+        assert call_order == ["revoke", "b2", "db"]
+        mock_task_service.revoke_active_tasks_for_document.assert_awaited_once_with(doc.id)
+
+    @pytest.mark.asyncio
+    async def test_delete_proceeds_even_if_revoke_raises(
+        self,
+        mock_repo: AsyncMock,
+        mock_storage: AsyncMock,
+    ) -> None:
+        """La revoca e' best-effort: se fallisce il delete continua lo stesso."""
+        doc = _make_document(storage_key="users/abc/xyz.pdf")
+        mock_repo.get_by_id.return_value = doc
+        mock_repo.delete.return_value = True
+
+        mock_task_service = AsyncMock()
+        mock_task_service.revoke_active_tasks_for_document.side_effect = RuntimeError(
+            "broker irraggiungibile"
+        )
+
+        svc = DocumentService(
+            repository=mock_repo,
+            storage=mock_storage,
+            task_service=mock_task_service,
+        )
+        # Non deve sollevare: il delete deve completarsi nonostante la revoca fallita
+        await svc.delete_document(document_id=doc.id)
+
+        mock_storage.delete_object.assert_awaited_once_with("users/abc/xyz.pdf")
+        mock_repo.delete.assert_awaited_once_with(doc.id)
+
 
 # =============================================================================
 # READ (list, get)

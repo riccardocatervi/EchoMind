@@ -1,5 +1,6 @@
 import { useRef, useState, type DragEvent } from "react";
 import { UploadCloud, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { Button } from "@/shared/components/ui/button";
@@ -17,16 +18,19 @@ interface FileDropzoneProps {
 
 /** Area drag&drop + file picker con validazione MIME/size lato client. */
 export function FileDropzone({ file, onSelect, disabled }: FileDropzoneProps) {
+  const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
+  const maxLabel = formatBytes(MAX_UPLOAD_SIZE_BYTES);
+
   function validateAndSelect(candidate: File) {
     if (!(ALLOWED_MIME_TYPES as readonly string[]).includes(candidate.type)) {
-      toast.error("Tipo di file non supportato (PDF, DOCX, TXT, MP3, WAV, M4A)");
+      toast.error(t("dropzone.unsupportedType"));
       return;
     }
     if (candidate.size > MAX_UPLOAD_SIZE_BYTES) {
-      toast.error(`File troppo grande (max ${formatBytes(MAX_UPLOAD_SIZE_BYTES)})`);
+      toast.error(t("dropzone.tooLarge", { max: maxLabel }));
       return;
     }
     onSelect(candidate);
@@ -51,7 +55,7 @@ export function FileDropzone({ file, onSelect, disabled }: FileDropzoneProps) {
           type="button"
           variant="ghost"
           size="icon"
-          aria-label="Rimuovi file"
+          aria-label={t("dropzone.removeFile")}
           disabled={disabled}
           onClick={() => onSelect(null)}
         >
@@ -82,10 +86,8 @@ export function FileDropzone({ file, onSelect, disabled }: FileDropzoneProps) {
       )}
     >
       <UploadCloud className="size-8 text-muted-foreground" aria-hidden="true" />
-      <p className="text-sm font-medium">Trascina un file o clicca per sceglierlo</p>
-      <p className="text-xs text-muted-foreground">
-        PDF, DOCX, TXT, MP3, WAV, M4A · max {formatBytes(MAX_UPLOAD_SIZE_BYTES)}
-      </p>
+      <p className="text-sm font-medium">{t("dropzone.hint")}</p>
+      <p className="text-xs text-muted-foreground">{t("dropzone.formats", { max: maxLabel })}</p>
       <input
         ref={inputRef}
         type="file"

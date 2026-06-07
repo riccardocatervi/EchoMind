@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from echomind.core.logging import get_logger
@@ -41,9 +42,13 @@ class ProfileService:
         self,
         repository: ProfileRepository,
         system_session_maker: async_sessionmaker[AsyncSession],
+        *,
+        seed_auth_user: bool = False,
     ) -> None:
         self._repository = repository
         self._system_session_maker = system_session_maker
+        # Solo in sviluppo (vedi get_or_create). Default False = sicuro in produzione.
+        self._seed_auth_user = seed_auth_user
 
     async def get_or_create(self, user_id: UUID) -> Profile:
         """Ritorna il profile dell'utente, creandolo se non esiste.
@@ -71,6 +76,17 @@ class ProfileService:
             # `get_by_id` come superuser: verifica race condition
             already_created = await system_repository.get_by_id(user_id)
             if already_created is None:
+                if self._seed_auth_user:
+                    # SOLO in development: l'utente vive in Supabase cloud ma non
+                    # nel Postgres locale, quindi la FK profiles -> auth.users
+                    # fallirebbe. In produzione auth.users e' gestito da Supabase
+                    # e questo ramo resta disattivato (flag False).
+                    await system_session.execute(
+                        text(
+                            "INSERT INTO auth.users (id) VALUES (:id) ON CONFLICT (id) DO NOTHING"
+                        ),
+                        {"id": str(user_id)},
+                    )
                 await system_repository.create(user_id)
 
         # Rilettura via sessione RLS dell'utente (per coerenza del path GET)

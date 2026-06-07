@@ -21,7 +21,10 @@ export function ProtectedRoute() {
   }
 
   if (status === "unauthenticated") {
-    return <Navigate to="/login" replace />;
+    // Redirige alla landing page (non a /login): cosi' il logout torna alla home
+    // e un visitatore non autenticato vede i CTA "Accedi / Registrati" prima di
+    // essere forzato nel form di login. Nessuna race condition con signOut().
+    return <Navigate to="/" replace />;
   }
 
   return <Outlet />;

@@ -4,9 +4,19 @@ import { describe, expect, it } from "vitest";
 import { StatusBadge } from "@/features/documents/components/StatusBadge";
 
 describe("StatusBadge", () => {
-  it("mostra l'etichetta dello stato", () => {
+  it("mostra 'In elaborazione' per lo stato uploaded", () => {
     render(<StatusBadge status="uploaded" />);
-    expect(screen.getByText("Caricato")).toBeInTheDocument();
+    expect(screen.getByText("In elaborazione")).toBeInTheDocument();
+  });
+
+  it("mostra 'Trascritto' per lo stato transcribed", () => {
+    render(<StatusBadge status="transcribed" />);
+    expect(screen.getByText("Trascritto")).toBeInTheDocument();
+  });
+
+  it("mostra 'Completato' per lo stato completed", () => {
+    render(<StatusBadge status="completed" />);
+    expect(screen.getByText("Completato")).toBeInTheDocument();
   });
 
   it("mostra l'etichetta per lo stato fallito", () => {

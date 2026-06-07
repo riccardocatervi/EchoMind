@@ -140,8 +140,15 @@ def test_document_status_uses_enum_type() -> None:
 
 
 def test_document_status_enum_values() -> None:
-    """L'Enum Python ha esattamente i 3 valori del DDL."""
-    assert {s.value for s in DocumentStatus} == {"pending", "uploaded", "failed"}
+    """L'Enum Python ha esattamente i 6 valori del DDL (pending/uploaded/transcribed/extracted/completed/failed)."""
+    assert {s.value for s in DocumentStatus} == {
+        "pending",
+        "uploaded",
+        "transcribed",
+        "extracted",
+        "completed",
+        "failed",
+    }
 
 
 def test_document_owner_fk_cascades() -> None:

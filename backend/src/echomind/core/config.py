@@ -99,6 +99,30 @@ class Settings(BaseSettings):
         ),
     )
 
+    # URL progetto + service role key: necessari SOLO per le operazioni Admin
+    # (es. DELETE /users/me che chiama l'Admin API per eliminare auth.users).
+    # In dev possono restare None: l'endpoint usa un fallback SQL diretto.
+    # In produzione (Supabase cloud) devono essere valorizzati.
+    # Source: Supabase Dashboard --> Project Settings --> API.
+    supabase_url: str | None = Field(
+        default=None,
+        description=(
+            "URL del progetto Supabase (es. https://xxx.supabase.co). "
+            "Richiesto per DELETE /users/me in produzione (Supabase Admin API). "
+            "Source: Supabase Dashboard --> Project Settings --> API."
+        ),
+    )
+
+    supabase_service_role_key: SecretStr | None = Field(
+        default=None,
+        description=(
+            "Service Role Key Supabase. NON esporre mai al client: "
+            "bypassa la RLS e ha accesso pieno al DB. "
+            "Usata solo per operazioni admin server-side (es. delete user). "
+            "Source: Supabase Dashboard --> Project Settings --> API."
+        ),
+    )
+
     # -------------------------------------------------------------------------
     # Backblaze B2 (S3-compatible object storage) — M2
     # -------------------------------------------------------------------------

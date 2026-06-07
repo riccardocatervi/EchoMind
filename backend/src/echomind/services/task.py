@@ -23,6 +23,7 @@ Ordine enqueue (problema del "dual write" DB + broker):
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
@@ -183,6 +184,69 @@ class TaskService:
             document_id=str(document_id),
         )
         return task
+
+    async def revoke_active_tasks_for_document(self, document_id: UUID) -> None:
+        """Revoca (best-effort) i task Celery attivi per un documento.
+
+        Chiamato da DocumentService.delete_document PRIMA dell'eliminazione
+        per interrompere Whisper/Gemini in esecuzione e risparmiare crediti API.
+
+        Strategia di revoca:
+        - `terminate=True`  --> invia SIGTERM al processo worker child che
+          esegue il task (solo se running; no-op se ancora queued).
+        - `signal='SIGTERM'` --> graceful: il child puo' eseguire cleanup prima
+          di morire (l'HTTP request in corso viene comunque abortita).
+        - `reply=False` (default Celery) --> fire-and-forget: non aspettiamo
+          ack dai worker; la funzione torna subito.
+
+        Idempotenza in caso di re-delivery (task_acks_late=True):
+        - Se il task era 'running' e SIGTERM lo ha ucciso, RabbitMQ riconsegna
+          il messaggio. Il worker tenta di eseguirlo di nuovo ma la riga `tasks`
+          e' gia' stata cascade-deleted con il documento --> ritorna `already_done`
+          senza fare alcuna chiamata API. Zero sprechi di crediti.
+        - Se il task era 'queued' (non ancora preso dal worker), Celery registra
+          il task_id come revocato nel suo state store; il worker lo salta
+          quando lo dequeue senza eseguirlo.
+
+        L'import di celery_app e' lazy (pattern gia' usato negli enqueue):
+        evita che future evoluzioni del grafo di import possano creare cicli.
+
+        celery_app.control.revoke e' sincrono (pubblica sul control exchange di
+        RabbitMQ). Lo eseguiamo in asyncio.to_thread per non bloccare il loop
+        di FastAPI anche per i pochi ms richiesti dall'operazione.
+        """
+        active_tasks = await self._repository.list_active_by_document(document_id)
+        if not active_tasks:
+            return
+
+        task_ids = [str(t.id) for t in active_tasks]
+        log.info(
+            "document_tasks_revoking",
+            document_id=str(document_id),
+            count=len(task_ids),
+            task_ids=task_ids,
+        )
+
+        # Import lazy: vedi nota in cima al modulo.
+        from echomind.worker.celery_app import celery_app
+
+        def _revoke_all() -> None:
+            for task_id in task_ids:
+                try:
+                    celery_app.control.revoke(task_id, terminate=True, signal="SIGTERM")
+                except Exception as exc:
+                    log.warning(
+                        "task_revoke_broker_error",
+                        task_id=task_id,
+                        error=str(exc),
+                    )
+
+        await asyncio.to_thread(_revoke_all)
+        log.info(
+            "document_tasks_revoked",
+            document_id=str(document_id),
+            count=len(task_ids),
+        )
 
     async def get_task(self, *, task_id: UUID) -> Task:
         """Dettaglio singolo. Solleva TaskNotFoundError se assente/nascosto da RLS."""

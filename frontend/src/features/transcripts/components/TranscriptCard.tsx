@@ -5,7 +5,7 @@ import type { TranscriptRead } from "@/features/transcripts/schemas/transcript";
 
 export function TranscriptCard({ transcript }: { transcript: TranscriptRead }) {
   return (
-    <Card>
+    <Card className="shadow-[0_0_30px_rgba(99,120,220,0.15)] ring-1 ring-white/5">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <FileText className="size-4 text-muted-foreground" aria-hidden="true" />

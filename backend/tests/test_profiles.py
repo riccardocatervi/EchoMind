@@ -16,6 +16,8 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 GET_ENDPOINT = "/api/v1/profiles/me"
 
@@ -143,3 +145,28 @@ async def test_no_auth_returns_401(client: httpx.AsyncClient) -> None:
     """Endpoint protetto: senza token → 401."""
     response = await client.get(GET_ENDPOINT)
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_auto_provisions_unseeded_user_in_dev(
+    client: httpx.AsyncClient,
+    auth_headers: Callable[[UUID | None], dict[str, str]],
+    system_session: AsyncSession,
+) -> None:
+    """In development un utente NON presente in auth.users viene creato in
+    automatico (seam Supabase cloud vs Postgres locale): la GET ritorna 200
+    invece di 500 sulla FK profiles -> auth.users.
+
+    test_settings ha app_env='development', quindi l'auto-seed e' attivo.
+    """
+    user_id = uuid4()  # volutamente NON seedato in auth.users
+    try:
+        response = await client.get(GET_ENDPOINT, headers=auth_headers(user_id))
+        assert response.status_code == 200, response.text
+        assert response.json()["id"] == str(user_id)
+    finally:
+        # Cleanup mirato (niente TRUNCATE): rimuove solo l'utente del test.
+        await system_session.execute(
+            text("DELETE FROM auth.users WHERE id = :id"), {"id": str(user_id)}
+        )
+        await system_session.commit()

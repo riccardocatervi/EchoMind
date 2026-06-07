@@ -33,10 +33,17 @@ class DocumentStatus(enum.StrEnum):
     `StrEnum` (Python 3.11+) eredita da `str` ed Enum: i valori sono
     JSON-serializable nativi (FastAPI/Pydantic convertono in stringa
     senza encoder custom).
+
+    Lifecycle lineare (vedi migration 0006):
+        pending --> uploaded --> transcribed --> extracted --> completed
+        [qualsiasi step]  -->  failed  (terminale)
     """
 
     PENDING = "pending"
     UPLOADED = "uploaded"
+    TRANSCRIBED = "transcribed"  # M4 completato: transcript pronto
+    EXTRACTED = "extracted"  # M5 parziale: grafo in Neo4j
+    COMPLETED = "completed"  # M5 completo: summary + embeddings pronti
     FAILED = "failed"
 
 

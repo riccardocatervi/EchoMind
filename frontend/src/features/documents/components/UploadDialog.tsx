@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Loader2, Upload } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { Button } from "@/shared/components/ui/button";
@@ -17,6 +18,7 @@ import { useUploadDocument } from "@/features/documents/api/mutations";
 import { FileDropzone } from "@/features/documents/components/FileDropzone";
 
 export function UploadDialog() {
+  const { t } = useTranslation();
   const upload = useUploadDocument();
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -41,15 +43,15 @@ export function UploadDialog() {
       {
         onSuccess: (doc) => {
           if (doc.status === "failed") {
-            toast.error("Il contenuto del file non corrisponde al tipo dichiarato");
+            toast.error(t("upload.error.mimeType"));
           } else {
-            toast.success("Documento caricato. Elaborazione avviata.");
+            toast.success(t("upload.success"));
           }
           setOpen(false);
           reset();
         },
         onError: (error) => {
-          toast.error(error.message || "Upload fallito");
+          toast.error(error.message || t("upload.error.failed"));
         },
       },
     );
@@ -60,16 +62,13 @@ export function UploadDialog() {
       <DialogTrigger asChild>
         <Button>
           <Upload aria-hidden="true" />
-          Carica documento
+          {t("docs.upload")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Carica un documento</DialogTitle>
-          <DialogDescription>
-            Testo (PDF, DOCX, TXT) o audio (MP3, WAV, M4A). Dopo il caricamento partono
-            automaticamente trascrizione ed estrazione del grafo.
-          </DialogDescription>
+          <DialogTitle>{t("upload.dialog.title")}</DialogTitle>
+          <DialogDescription>{t("upload.dialog.description")}</DialogDescription>
         </DialogHeader>
 
         <FileDropzone file={file} onSelect={setFile} disabled={upload.isPending} />
@@ -78,7 +77,7 @@ export function UploadDialog() {
           <div className="space-y-1">
             <Progress value={progress} />
             <p className="text-xs text-muted-foreground">
-              {progress < 100 ? `Caricamento... ${progress}%` : "Verifica del file in corso..."}
+              {progress < 100 ? t("upload.progress", { percent: progress }) : t("upload.checking")}
             </p>
           </div>
         )}
@@ -89,11 +88,11 @@ export function UploadDialog() {
             onClick={() => handleOpenChange(false)}
             disabled={upload.isPending}
           >
-            Annulla
+            {t("upload.cancel")}
           </Button>
           <Button onClick={startUpload} disabled={!file || upload.isPending}>
             {upload.isPending && <Loader2 className="animate-spin" aria-hidden="true" />}
-            Carica
+            {t("upload.submit")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -6,6 +6,10 @@ import { Toaster } from "sonner";
 import App from "@/app/App";
 import { AuthProvider } from "@/features/auth/components/AuthProvider";
 import { queryClient } from "@/shared/api/queryClient";
+// Inizializza i18next (react-i18next) prima del render dell'albero React.
+// DEVE essere importato qui (effetto collaterale) perche' useTranslation()
+// si aspetta che i18n sia gia' configurato al momento del primo render.
+import "@/shared/i18n";
 import "@/index.css";
 
 const rootElement = document.getElementById("root");

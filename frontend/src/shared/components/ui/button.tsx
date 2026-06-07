@@ -33,9 +33,18 @@ export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {}
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, ...props }, ref) => {
+  // `type` viene estratto da props con default "button": i <button> senza tipo
+  // esplicito in HTML sono type="submit" per spec, il che causa submit
+  // accidentali del form piu' vicino. Impostare il default a "button" e' la
+  // prassi standard per le component library (shadcn, MUI, Chakra, etc.).
+  ({ className, variant, size, type = "button", ...props }, ref) => {
     return (
-      <button ref={ref} className={cn(buttonVariants({ variant, size, className }))} {...props} />
+      <button
+        ref={ref}
+        type={type}
+        className={cn(buttonVariants({ variant, size, className }))}
+        {...props}
+      />
     );
   },
 );

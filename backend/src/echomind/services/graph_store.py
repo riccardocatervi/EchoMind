@@ -67,6 +67,10 @@ class GraphStore(Protocol):
 
     async def delete_document_graph(self, *, owner_id: UUID, document_id: UUID) -> None: ...
 
+    async def delete_owner_graph(self, *, owner_id: UUID) -> None:
+        """Rimuove TUTTI i nodi ed archi di un utente (usato al delete account)."""
+        ...
+
 
 def _to_graph_store_error(exc: Exception) -> GraphStoreError:
     if isinstance(exc, TransientError):
@@ -84,6 +88,9 @@ _CREATE_CONSTRAINT = (
 _DELETE_SUBGRAPH = (
     "MATCH (e:Entity {owner_id: $owner_id, document_id: $document_id}) DETACH DELETE e"
 )
+# Elimina tutti i nodi (e di conseguenza tutti gli archi) di un owner.
+# Usato al delete account: rimuove l'intero sottografo dell'utente in un solo round-trip.
+_DELETE_OWNER_GRAPH = "MATCH (e:Entity {owner_id: $owner_id}) DETACH DELETE e"
 _CREATE_NODES = """
 UNWIND $nodes AS n
 CREATE (e:Entity {
@@ -269,3 +276,21 @@ class Neo4jGraphStore:
     @staticmethod
     def _delete_tx(tx: ManagedTransaction, owner_id: str, document_id: str) -> None:
         tx.run(_DELETE_SUBGRAPH, owner_id=owner_id, document_id=document_id)
+
+    # -------------------------------------------------------------------------
+    # Delete owner (cancellazione account: rimuove TUTTI i nodi dell'utente)
+    # -------------------------------------------------------------------------
+    async def delete_owner_graph(self, *, owner_id: UUID) -> None:
+        """Rimuove tutti i nodi ed archi del proprietario in un unico round-trip."""
+        await asyncio.to_thread(self._delete_owner_sync, str(owner_id))
+
+    def _delete_owner_sync(self, owner_id: str) -> None:
+        try:
+            with self._driver.session() as session:
+                session.execute_write(self._delete_owner_tx, owner_id)
+        except Exception as exc:
+            raise _to_graph_store_error(exc) from exc
+
+    @staticmethod
+    def _delete_owner_tx(tx: ManagedTransaction, owner_id: str) -> None:
+        tx.run(_DELETE_OWNER_GRAPH, owner_id=owner_id)
