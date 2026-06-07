@@ -141,6 +141,52 @@ jobs:
           retention-days: 7
 
   # ---------------------------------------------------------------------------
+  # Frontend: lint, format check, typecheck, test (vitest), build
+  # ---------------------------------------------------------------------------
+  frontend-verify:
+    name: Frontend verify
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        # Niente package.json di root: pinniamo la versione esplicitamente
+        # (deve combaciare col lockfile e con il campo packageManager).
+        uses: pnpm/action-setup@v4
+        with:
+          version: "11.5.1"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # Node >= 22.13: pnpm 11 (vedi packageManager) ha rimosso il supporto a Node 20.
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint (eslint)
+        run: pnpm lint
+
+      - name: Format check (prettier)
+        run: pnpm format:check
+
+      - name: Type check (tsc)
+        run: pnpm typecheck
+
+      - name: Tests (vitest)
+        run: pnpm test
+
+      - name: Build (vite)
+        run: pnpm build
+
+  # ---------------------------------------------------------------------------
   # Secrets scan (gitleaks)
   # ---------------------------------------------------------------------------
   secrets-scan:

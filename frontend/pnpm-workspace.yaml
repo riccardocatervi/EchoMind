@@ -1,0 +1,5 @@
+# Impostazioni pnpm (v10+): vivono qui, non nel campo "pnpm" di package.json.
+# Autorizziamo il build script di esbuild (scarica il binario nativo usato da
+# Vite). Senza, pnpm lo ignora (per sicurezza) e "vite build" fallirebbe.
+allowBuilds:
+  esbuild: true

@@ -14,10 +14,10 @@ Riferimento: https://docs.pydantic.dev/latest/concepts/pydantic_settings/
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
-from pydantic import Field, PostgresDsn, SecretStr, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, PostgresDsn, SecretStr, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -344,6 +344,35 @@ class Settings(BaseSettings):
             "molte chiamate LLM su documenti lunghi richiedono minuti."
         ),
     )
+
+    # -------------------------------------------------------------------------
+    # Frontend / CORS (M6)
+    # -------------------------------------------------------------------------
+    # Origini ammesse per le richieste cross-origin del browser. La SPA React e'
+    # servita da host:porta diversi dall'API (es. http://localhost:5173): senza
+    # CORS il browser blocca ogni fetch e il preflight OPTIONS dell'upload.
+    # NoDecode disabilita il parsing JSON automatico di pydantic-settings, cosi'
+    # il validator sotto accetta anche una comoda stringa CSV da env.
+    cors_allow_origins: Annotated[list[str], NoDecode] = Field(
+        default=["http://localhost:5173"],
+        description=(
+            "Origini ammesse per CORS. Lista JSON o stringa CSV "
+            "(es. 'http://localhost:5173,https://app.example.com'). "
+            "Default: il dev server Vite."
+        ),
+    )
+
+    @field_validator("cors_allow_origins", mode="before")
+    @classmethod
+    def _split_cors_origins(cls, value: object) -> object:
+        """Accetta una stringa CSV oltre alla lista per CORS_ALLOW_ORIGINS.
+
+        Da env e' molto piu' comodo scrivere "a,b,c" che '["a","b","c"]'. Se il
+        valore e' gia' una lista (default o costruttore nei test), lo lascia stare.
+        """
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
     @model_validator(mode="after")
     def _validate_jwt_credentials(self) -> Self:
