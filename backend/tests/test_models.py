@@ -26,12 +26,18 @@ def test_profile_tablename_is_plural_snake_case() -> None:
 
 
 def test_profile_columns_match_design() -> None:
-    """Verifica nomi e tipi delle colonne come da design (M1)."""
+    """Verifica nomi e tipi delle colonne come da design (M1 + preferred_language M8)."""
     mapper = inspect(Profile)
     columns = {col.key: col for col in mapper.columns}
 
-    expected_keys = {"id", "display_name", "created_at", "updated_at"}
+    expected_keys = {"id", "display_name", "preferred_language", "created_at", "updated_at"}
     assert set(columns.keys()) == expected_keys
+
+
+def test_profile_preferred_language_is_not_nullable() -> None:
+    """preferred_language e' NOT NULL (default 'it' lato DB)."""
+    mapper = inspect(Profile)
+    assert mapper.columns["preferred_language"].nullable is False
 
 
 def test_profile_primary_key_is_id() -> None:

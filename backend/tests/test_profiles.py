@@ -101,6 +101,78 @@ async def test_patch_can_clear_display_name(
 
 
 @pytest.mark.asyncio
+async def test_get_returns_default_language(
+    client: httpx.AsyncClient,
+    auth_headers: Callable[[UUID | None], dict[str, str]],
+    seed_auth_user: Callable[[UUID], Awaitable[None]],
+) -> None:
+    """Il profile appena creato ha preferred_language='it' (default migration)."""
+    user_id = uuid4()
+    await seed_auth_user(user_id)
+
+    response = await client.get(GET_ENDPOINT, headers=auth_headers(user_id))
+
+    assert response.status_code == 200
+    assert response.json()["preferred_language"] == "it"
+
+
+@pytest.mark.asyncio
+async def test_patch_updates_preferred_language(
+    client: httpx.AsyncClient,
+    auth_headers: Callable[[UUID | None], dict[str, str]],
+    seed_auth_user: Callable[[UUID], Awaitable[None]],
+) -> None:
+    """PATCH preferred_language='en' cambia la lingua di output."""
+    user_id = uuid4()
+    await seed_auth_user(user_id)
+    headers = auth_headers(user_id)
+
+    response = await client.patch(GET_ENDPOINT, headers=headers, json={"preferred_language": "en"})
+
+    assert response.status_code == 200
+    assert response.json()["preferred_language"] == "en"
+
+
+@pytest.mark.asyncio
+async def test_patch_language_preserves_display_name(
+    client: httpx.AsyncClient,
+    auth_headers: Callable[[UUID | None], dict[str, str]],
+    seed_auth_user: Callable[[UUID], Awaitable[None]],
+) -> None:
+    """Cambiare SOLO la lingua non azzera il display_name (partial update)."""
+    user_id = uuid4()
+    await seed_auth_user(user_id)
+    headers = auth_headers(user_id)
+
+    await client.patch(GET_ENDPOINT, headers=headers, json={"display_name": "Alice"})
+    response = await client.patch(GET_ENDPOINT, headers=headers, json={"preferred_language": "en"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["preferred_language"] == "en"
+    assert body["display_name"] == "Alice"  # NON cancellato
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_unsupported_language(
+    client: httpx.AsyncClient,
+    auth_headers: Callable[[UUID | None], dict[str, str]],
+    seed_auth_user: Callable[[UUID], Awaitable[None]],
+) -> None:
+    """Una lingua non supportata (es. 'fr') -> 422."""
+    user_id = uuid4()
+    await seed_auth_user(user_id)
+
+    response = await client.patch(
+        GET_ENDPOINT,
+        headers=auth_headers(user_id),
+        json={"preferred_language": "fr"},
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_patch_rejects_extra_fields(
     client: httpx.AsyncClient,
     auth_headers: Callable[[UUID | None], dict[str, str]],

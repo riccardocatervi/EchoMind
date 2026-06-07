@@ -45,13 +45,15 @@ async def get_my_profile(
     response_model=ProfileRead,
     summary="Aggiorna il profile dell'utente corrente",
     description=(
-        "Aggiornamento parziale: solo i campi presenti nel body vengono "
-        "modificati. Set `display_name` a `null` per rimuoverlo."
+        "Aggiornamento parziale: solo i campi PRESENTI nel body vengono "
+        "modificati. Set `display_name` a `null` per rimuoverlo. "
+        "`preferred_language` (it/en) cambia la lingua di output di summary, "
+        "grafo e risposte RAG."
     ),
     responses={
         401: {"description": "Token mancante, invalido o scaduto"},
         403: {"description": "Token valido ma claim obbligatori mancanti"},
-        422: {"description": "Body malformato o campi extra non permessi"},
+        422: {"description": "Body malformato, lingua non supportata o campi extra"},
     },
 )
 async def patch_my_profile(
@@ -59,8 +61,20 @@ async def patch_my_profile(
     payload: ProfileUpdate,
     profile_service: ProfileServiceDep,
 ) -> ProfileRead:
-    """PATCH /profiles/me — aggiorna i campi forniti."""
+    """PATCH /profiles/me — aggiorna SOLO i campi effettivamente forniti.
+
+    Usiamo `model_fields_set` per distinguere "campo assente" (lascia invariato)
+    da "campo a null" (es. azzera display_name): cosi' un PATCH che cambia solo
+    la lingua non cancella il display_name, e viceversa.
+    """
     # Garantisce esistenza prima dell'update (just-in-time create se serve)
     await profile_service.get_or_create(user_id)
-    updated = await profile_service.update_display_name(user_id, payload.display_name)
+
+    provided = payload.model_fields_set
+    if "display_name" in provided:
+        await profile_service.update_display_name(user_id, payload.display_name)
+    if "preferred_language" in provided and payload.preferred_language is not None:
+        await profile_service.update_preferred_language(user_id, payload.preferred_language)
+
+    updated = await profile_service.get_or_create(user_id)
     return ProfileRead.model_validate(updated)

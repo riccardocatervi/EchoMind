@@ -107,3 +107,15 @@ class ProfileService:
         if profile is None:
             raise RuntimeError(f"Profile {user_id} not found — call get_or_create first")
         return await self._repository.update_display_name(profile, display_name)
+
+    async def update_preferred_language(self, user_id: UUID, language: str) -> Profile:
+        """Aggiorna la lingua di output preferita dell'utente corrente.
+
+        Pre-requisito: il profile esiste (chiamare get_or_create prima) e
+        `language` e' gia' validata dallo schema (ProfileUpdate). Sotto RLS:
+        l'UPDATE e' permesso SOLO se id == sub_claim.
+        """
+        profile = await self._repository.get_by_id(user_id)
+        if profile is None:
+            raise RuntimeError(f"Profile {user_id} not found — call get_or_create first")
+        return await self._repository.update_preferred_language(profile, language)
