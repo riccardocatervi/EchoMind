@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { LogOut, Network, UserRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link, Outlet } from "react-router-dom";
@@ -8,6 +9,7 @@ import { GraphBackground } from "@/shared/components/GraphBackground";
 import { LanguageSwitcher } from "@/shared/components/LanguageSwitcher";
 import { ThemeToggle } from "@/shared/components/ThemeToggle";
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { useProfile } from "@/features/profile/api/queries";
 
 /**
  * Guscio dell'area autenticata: topbar sticky + sfondo animato + <Outlet/> + Footer.
@@ -28,7 +30,18 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
  */
 export function AppShell() {
   const { user, signOut } = useAuth();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const { data: profile } = useProfile();
+
+  // Sincronizza la lingua dell'interfaccia dalla preferenza salvata sul profilo.
+  // Questo assicura che, al login, la lingua preferita (it/en) venga applicata
+  // anche se diversa da quella memorizzata nel localStorage locale.
+  // L'effetto e' no-op se la lingua e' gia' quella corrente.
+  useEffect(() => {
+    if (profile?.preferred_language && profile.preferred_language !== i18n.language) {
+      void i18n.changeLanguage(profile.preferred_language);
+    }
+  }, [profile?.preferred_language, i18n]);
 
   // Recupera il nome da user_metadata (salvato al signup).
   // Se non disponibile, mostra l'email come fallback.

@@ -1,5 +1,6 @@
 import axios from "axios";
 
+import i18n from "@/shared/i18n";
 import { errorResponseSchema } from "@/shared/schemas/common";
 
 const baseURL = `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"}/api/v1`;
@@ -43,9 +44,12 @@ export const api = axios.create({
 });
 
 // Request: allega il Bearer (il getter puo' essere async -> sessione Supabase).
+// Aggiunge anche Accept-Language: la lingua corrente dell'interfaccia. Il backend
+// la usa nell'endpoint /ask per rispondere nella lingua dell'utente.
 api.interceptors.request.use(async (config) => {
   const token = await accessTokenGetter();
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  config.headers["Accept-Language"] = i18n.language;
   return config;
 });
 
