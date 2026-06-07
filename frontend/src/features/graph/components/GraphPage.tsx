@@ -1,4 +1,5 @@
 import { AlertTriangle, ArrowLeft, Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
 
 import { isApiError } from "@/shared/api/axios";
@@ -7,16 +8,17 @@ import { GraphViewer } from "@/features/graph/components/GraphViewer";
 
 /** Pagina full-canvas del grafo. Default export: caricata in lazy dal router. */
 export default function GraphPage() {
+  const { t } = useTranslation();
   const { documentId } = useParams<{ documentId: string }>();
   const { data: graph, isLoading, isError, error } = useGraph(documentId);
 
   const errorMessage = isApiError(error)
     ? error.status === 404
-      ? "Il grafo non e' ancora pronto."
+      ? t("graph.notReady")
       : error.status === 503
-        ? "Il backend del grafo (Neo4j) non e' raggiungibile."
+        ? t("graph.backendUnavailable")
         : error.message
-    : "Errore nel caricamento del grafo";
+    : t("graph.loadError");
 
   return (
     <div className="space-y-4">
@@ -25,7 +27,7 @@ export default function GraphPage() {
         className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="size-4" aria-hidden="true" />
-        Documento
+        {t("graph.back")}
       </Link>
 
       <div className="h-[calc(100vh-12rem)] w-full overflow-hidden rounded-lg border bg-card/30">
@@ -33,7 +35,7 @@ export default function GraphPage() {
           <div className="flex h-full items-center justify-center">
             <Loader2
               className="size-6 animate-spin text-muted-foreground"
-              aria-label="Caricamento"
+              aria-label={t("graph.loading")}
             />
           </div>
         )}
@@ -45,7 +47,7 @@ export default function GraphPage() {
         )}
         {graph && graph.nodes.length === 0 && (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            Nessun nodo nel grafo.
+            {t("graph.empty")}
           </div>
         )}
         {graph && graph.nodes.length > 0 && <GraphViewer graph={graph} />}

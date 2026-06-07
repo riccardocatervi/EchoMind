@@ -16,7 +16,16 @@ export function useAuth() {
     user: session?.user ?? null,
     signInWithPassword: (email: string, password: string) =>
       supabase.auth.signInWithPassword({ email, password }),
-    signUp: (email: string, password: string) => supabase.auth.signUp({ email, password }),
+    /**
+     * Registrazione. `userMetadata` (opzionale) viene salvato in
+     * `user.user_metadata` -- usa le chiavi `first_name` e `last_name`.
+     */
+    signUp: (email: string, password: string, userMetadata?: Record<string, string>) =>
+      supabase.auth.signUp({
+        email,
+        password,
+        options: userMetadata ? { data: userMetadata } : undefined,
+      }),
     signOut: () => supabase.auth.signOut(),
   };
 }

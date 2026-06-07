@@ -329,6 +329,26 @@ class DocumentService:
         """
         document = await self._require_document(document_id)
 
+        # Revoca best-effort dei task Celery attivi prima di eliminare i dati.
+        # Obiettivo: interrompere Whisper/Gemini in esecuzione per non consumare
+        # crediti API su un documento che sta per sparire.
+        # Ordine deliberato: revoca --> B2 delete --> DB delete.
+        # - La revoca arriva al worker prima che possa scaricare altri chunk da B2.
+        # - Se task_acks_late causa una re-delivery, il worker trova la riga task
+        #   gia' cascade-deleted --> early return senza API calls (already_done).
+        # Best-effort: se il task_service e' assente o la revoca fallisce,
+        # procediamo comunque con il delete (un credito API sprecato e' meno grave
+        # che bloccare l'eliminazione del documento).
+        if self._task_service is not None:
+            try:
+                await self._task_service.revoke_active_tasks_for_document(document.id)
+            except Exception as exc:
+                log.warning(
+                    "document_delete_revoke_failed",
+                    document_id=str(document_id),
+                    error=str(exc),
+                )
+
         await self._storage.delete_object(document.storage_key)
         await self._repository.delete(document_id)
 

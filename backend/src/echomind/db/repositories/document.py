@@ -22,7 +22,7 @@ from collections.abc import Sequence
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from echomind.db.models import Document, DocumentStatus
@@ -116,6 +116,43 @@ class DocumentRepository:
         await self._session.flush()
         await self._session.refresh(document)
         return document
+
+    async def mark_transcribed(self, document_id: UUID) -> None:
+        """Aggiorna status → 'transcribed' (M4 completato, transcript disponibile).
+
+        Opera per ID (non richiede l'oggetto Document caricato): i worker
+        non usano la sessione RLS e accedono al documento solo tramite ID.
+        """
+        await self._session.execute(
+            update(Document)
+            .where(Document.id == document_id)
+            .values(status=DocumentStatus.TRANSCRIBED)
+        )
+        await self._session.flush()
+
+    async def mark_extracted(self, document_id: UUID) -> None:
+        """Aggiorna status → 'extracted' (grafo M5 scritto su Neo4j).
+
+        Stato intermedio: il grafo e' leggibile, il summary non e' ancora pronto.
+        """
+        await self._session.execute(
+            update(Document)
+            .where(Document.id == document_id)
+            .values(status=DocumentStatus.EXTRACTED)
+        )
+        await self._session.flush()
+
+    async def mark_completed(self, document_id: UUID) -> None:
+        """Aggiorna status → 'completed' (M5 completato: summary + embeddings pronti).
+
+        Stato terminale positivo: il polling del frontend si ferma qui.
+        """
+        await self._session.execute(
+            update(Document)
+            .where(Document.id == document_id)
+            .values(status=DocumentStatus.COMPLETED)
+        )
+        await self._session.flush()
 
     async def delete(self, document_id: UUID) -> bool:
         """Cancella per id. Ritorna True se ha eliminato una riga, False se assente.

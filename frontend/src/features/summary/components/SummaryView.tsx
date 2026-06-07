@@ -22,7 +22,7 @@ export function SummaryView({ summary }: { summary: SummaryRead }) {
   const hasStats = nodes !== null || relationships !== null || communities !== null;
 
   return (
-    <Card>
+    <Card className="shadow-[0_0_30px_rgba(99,120,220,0.15)] ring-1 ring-white/5">
       <CardHeader>
         <CardTitle className="text-base">Riassunto</CardTitle>
         {hasStats && (

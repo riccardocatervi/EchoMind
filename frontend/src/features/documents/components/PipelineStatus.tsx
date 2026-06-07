@@ -1,42 +1,49 @@
 import { Check, Loader2, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { cn } from "@/shared/lib/utils";
+import type { DocumentStatus } from "@/features/documents/schemas/document";
 
-export type PipelineStage = "failed" | "transcribing" | "extracting" | "ready";
+/**
+ * Chiavi i18n per le label degli step ("pipeline.<key>").
+ * Le stringhe vengono da useTranslation() per supportare IT/EN.
+ */
+const STEP_KEYS = ["uploaded", "transcribed", "extracted", "completed"] as const;
+type StepKey = (typeof STEP_KEYS)[number];
 
-const STEPS = [
-  { key: "uploaded", label: "Caricato" },
-  { key: "transcribing", label: "Trascrizione" },
-  { key: "extracting", label: "Estrazione" },
-  { key: "ready", label: "Pronto" },
-] as const;
+/**
+ * Numero di step COMPLETATI per ogni stato del documento.
+ *
+ *   progress = 0 --> step 0 e' active (in corso)
+ *   progress = 1 --> step 0 done, step 1 active
+ *   ...
+ *   progress = 4 --> tutti done (completed)
+ */
+const PROGRESS: Record<DocumentStatus, number> = {
+  pending: 0, // caricamento in corso
+  uploaded: 1, // "Caricato" done; trascrizione in corso
+  transcribed: 2, // "Trascritto" done; estrazione in corso
+  extracted: 3, // "Estratto" done; riassunto in corso
+  completed: 4, // tutto done
+  failed: 0, // gestito separatamente (failedHere)
+};
 
-function activeIndexOf(stage: PipelineStage): number {
-  switch (stage) {
-    case "failed":
-      return 0;
-    case "transcribing":
-      return 1;
-    case "extracting":
-      return 2;
-    case "ready":
-      return 3;
-  }
-}
-
-/** Stepper orizzontale dello stato di elaborazione del documento. */
-export function PipelineStatus({ stage }: { stage: PipelineStage }) {
-  const activeIndex = activeIndexOf(stage);
+/** Stepper orizzontale che rispecchia il lifecycle a 4 fasi. */
+export function PipelineStatus({ status }: { status: DocumentStatus }) {
+  const { t } = useTranslation();
+  const progress = PROGRESS[status];
+  const isFailed = status === "failed";
+  const isCompleted = status === "completed";
 
   return (
     <ol className="flex flex-wrap items-center gap-x-2 gap-y-3">
-      {STEPS.map((step, index) => {
-        const done = stage === "ready" || index < activeIndex;
-        const active = stage !== "ready" && stage !== "failed" && index === activeIndex;
-        const failedHere = stage === "failed" && index === 0;
+      {STEP_KEYS.map((key: StepKey, index) => {
+        const done = isCompleted || index < progress;
+        const active = !isCompleted && !isFailed && index === progress;
+        const failedHere = isFailed && index === 0;
 
         return (
-          <li key={step.key} className="flex items-center gap-2">
+          <li key={key} className="flex items-center gap-2">
             <span
               className={cn(
                 "flex size-6 items-center justify-center rounded-full border text-xs font-medium",
@@ -62,9 +69,9 @@ export function PipelineStatus({ stage }: { stage: PipelineStage }) {
                 done || active ? "text-foreground" : "text-muted-foreground",
               )}
             >
-              {step.label}
+              {t(`pipeline.${key}`)}
             </span>
-            {index < STEPS.length - 1 && (
+            {index < STEP_KEYS.length - 1 && (
               <span className="mx-1 hidden h-px w-6 bg-border sm:inline-block" aria-hidden="true" />
             )}
           </li>

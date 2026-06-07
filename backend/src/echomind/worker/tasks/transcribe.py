@@ -222,6 +222,13 @@ async def run_transcribe(
         }
         async with session.begin():
             await task_repo.mark_succeeded(task, result=summary)
+
+        # Aggiorna lo status del documento: il transcript e' pronto.
+        # Commit separato: rende lo stato visibile all'API anche se il seam
+        # extract (sotto) fallisse (best-effort, non blocca la catena).
+        async with session.begin():
+            await DocumentRepository(session).mark_transcribed(document.id)
+
         log.info(
             "transcribe_task_succeeded",
             task_id=str(task_id),

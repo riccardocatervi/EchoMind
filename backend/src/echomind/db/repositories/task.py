@@ -40,6 +40,28 @@ class TaskRepository:
         result = await self._session.execute(select(Task).where(Task.id == task_id))
         return result.scalar_one_or_none()
 
+    async def list_active_by_document(self, document_id: UUID) -> Sequence[Task]:
+        """Task non-terminali (queued o running) associati a un documento.
+
+        Usato da DocumentService.delete_document per ottenere i Celery task ID
+        da revocare prima dell'eliminazione, evitando sprechi di crediti API.
+
+        Query su payload JSONB: `payload->>'document_id' = :val`.
+        L'operatore `Task.payload["document_id"].astext` genera il Postgres ->>
+        che estrae il valore come testo, confrontabile con la stringa UUID.
+
+        Nota: non esiste un indice GIN su questo campo; per il volume atteso
+        (al piu' 2 task attivi per documento: transcribe + extract) la scan
+        su una tabella relativamente piccola e' accettabile senza ottimizzazioni.
+        """
+        result = await self._session.execute(
+            select(Task).where(
+                Task.payload["document_id"].astext == str(document_id),
+                Task.status.in_([TaskStatus.QUEUED, TaskStatus.RUNNING]),
+            )
+        )
+        return result.scalars().all()
+
     async def list_by_owner(self, owner_id: UUID, *, limit: int, offset: int) -> Sequence[Task]:
         """Lista dei task di un utente, dal più recente.
 

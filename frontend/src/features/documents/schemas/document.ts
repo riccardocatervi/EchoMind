@@ -2,7 +2,14 @@ import { z } from "zod";
 
 import { isoDateTimeSchema, uuidSchema } from "@/shared/schemas/common";
 
-export const documentStatusSchema = z.enum(["pending", "uploaded", "failed"]);
+export const documentStatusSchema = z.enum([
+  "pending",
+  "uploaded",
+  "transcribed", // M4 completato: transcript disponibile
+  "extracted", // M5 parziale: grafo in Neo4j disponibile
+  "completed", // M5 completo: summary + embeddings pronti (stato terminale positivo)
+  "failed", // terminale negativo
+]);
 export type DocumentStatus = z.infer<typeof documentStatusSchema>;
 
 export const documentReadSchema = z.object({

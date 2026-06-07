@@ -33,6 +33,7 @@ from echomind.core.logging import get_logger
 from echomind.db.models import Transcript
 from echomind.db.models.task import TERMINAL_STATUSES
 from echomind.db.repositories import (
+    DocumentRepository,
     EmbeddingRepository,
     EmbeddingValue,
     SummaryRepository,
@@ -171,6 +172,13 @@ async def run_extract(
                 entities=result.entities,
                 relations=result.relations,
             )
+            # Stato intermedio: il grafo e' in Neo4j e leggibile via API.
+            # Commit separato: il frontend puo' mostrare il graph viewer
+            # gia' durante la generazione del summary (che puo' richiedere
+            # secondi aggiuntivi per documenti lunghi).
+            async with session.begin():
+                await DocumentRepository(session).mark_extracted(document_id)
+
             async with session.begin():
                 summary_row = await SummaryRepository(session).upsert(
                     document_id=document_id,
@@ -190,6 +198,9 @@ async def run_extract(
                         for item in result.embeddings
                     ],
                 )
+                # Stato finale: summary + embeddings pronti. Il polling del
+                # frontend si ferma qui (stato terminale positivo).
+                await DocumentRepository(session).mark_completed(document_id)
         except Exception as exc:
             retryable, error = _classify_error(exc)
             if retryable and not is_last_attempt:
