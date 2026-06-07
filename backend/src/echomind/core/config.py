@@ -370,6 +370,36 @@ class Settings(BaseSettings):
     )
 
     # -------------------------------------------------------------------------
+    # GraphRAG / Q&A per-documento (M8)
+    # -------------------------------------------------------------------------
+    rag_top_k: int = Field(
+        default=8,
+        gt=0,
+        description=(
+            "Numero di entita' piu' vicine recuperate da pgvector per ogni domanda RAG. "
+            "Valore piu' alto = contesto piu' ricco ma latenza maggiore."
+        ),
+    )
+
+    rag_neighbor_hops: int = Field(
+        default=1,
+        gt=0,
+        description=(
+            "Profondita' del vicinato Neo4j a partire dalle entita' seme (top-K). "
+            "1 = vicini diretti; 2 = vicini dei vicini. Default 1 per bilanciare contesto e latenza."
+        ),
+    )
+
+    rag_max_question_chars: int = Field(
+        default=2000,
+        gt=0,
+        description=(
+            "Lunghezza massima (caratteri) di una domanda RAG. "
+            "Corrisponde al max_length del campo `question` in AskRequest."
+        ),
+    )
+
+    # -------------------------------------------------------------------------
     # Frontend / CORS (M6)
     # -------------------------------------------------------------------------
     # Origini ammesse per le richieste cross-origin del browser. La SPA React e'

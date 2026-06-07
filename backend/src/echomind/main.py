@@ -23,7 +23,7 @@ from starlette.types import ASGIApp
 
 from echomind import __version__
 from echomind.api.v1.router import router as api_v1_router
-from echomind.core.config import Settings, get_settings
+from echomind.core.config import Settings, get_settings, require_secret
 from echomind.core.logging import configure_logging, get_logger, request_id_var
 from echomind.core.security import (
     ExpiredTokenError,
@@ -33,6 +33,7 @@ from echomind.core.security import (
     MissingTokenError,
 )
 from echomind.db.session import create_engine, create_session_maker
+from echomind.extraction.errors import EmbeddingError, LLMError
 from echomind.services import (
     B2StorageService,
     DocumentAlreadyConfirmedError,
@@ -40,6 +41,8 @@ from echomind.services import (
     ExtractionNotReadyError,
     GraphNotReadyError,
     GraphStoreError,
+    RagNotReadyError,
+    RagUnavailableError,
     StorageError,
     SummaryNotFoundError,
     TaskEnqueueError,
@@ -131,6 +134,38 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Startup resiliente: Neo4j assente/giu' non deve impedire l'avvio dell'API.
         app.state.graph_store = None
         log.warning("graph_store_unavailable", reason=str(exc))
+
+    # RAG components (embedder + answerer lato API, M8). Opzionali come gli altri
+    # backend: se GEMINI_API_KEY manca o Gemini non risponde, restiamo a None e
+    # POST /documents/{id}/ask ritorna 503 (RagUnavailableError dal dep).
+    # Riuso del client Gemini gia' creato dal worker (stesso pattern: sincrono,
+    # thread-safe): qui lo creiamo per l'API, separato da quello del worker.
+    try:
+        from google import genai as _genai
+
+        from echomind.extraction.gemini import GeminiEmbedder
+        from echomind.rag.gemini import GeminiRagAnswerer
+
+        _api_key = require_secret(
+            settings.gemini_api_key,
+            env_name="GEMINI_API_KEY",
+            hint="Richiesta per il Q&A RAG (POST /documents/{id}/ask).",
+        )
+        _client = _genai.Client(api_key=_api_key)
+        app.state.rag_embedder = GeminiEmbedder(
+            client=_client,
+            model=settings.gemini_embedding_model,
+            dimensions=settings.embedding_dimensions,
+        )
+        app.state.rag_answerer = GeminiRagAnswerer(
+            client=_client,
+            model=settings.gemini_model,
+        )
+        log.info("rag_components_ready")
+    except Exception as exc:
+        app.state.rag_embedder = None
+        app.state.rag_answerer = None
+        log.warning("rag_components_unavailable", reason=str(exc))
 
     yield  # ← qui gira l'app
 
@@ -314,6 +349,36 @@ def _register_exception_handlers(app: FastAPI) -> None:
     async def _on_graph_store_error(request: Request, exc: GraphStoreError) -> JSONResponse:
         # 503: il backend del grafo (Neo4j) non e' disponibile/configurato.
         return _make_response(503, "graph_unavailable", "Graph backend error")
+
+    # -------------------------------------------------------------------------
+    # Errori di dominio RAG (M8)
+    # -------------------------------------------------------------------------
+    @app.exception_handler(RagNotReadyError)
+    async def _on_rag_not_ready(request: Request, exc: RagNotReadyError) -> JSONResponse:
+        # 404: documento non trovato/non tuo (RLS), o elaborazione non completata.
+        # Indistinguibili by design.
+        return _make_response(404, "document_not_ready_for_qa", "Document not available for Q&A")
+
+    @app.exception_handler(RagUnavailableError)
+    async def _on_rag_unavailable(request: Request, exc: RagUnavailableError) -> JSONResponse:
+        # 503: GEMINI_API_KEY assente o componenti RAG non inizializzati.
+        return _make_response(503, "rag_unavailable", "RAG backend not configured")
+
+    @app.exception_handler(LLMError)
+    async def _on_llm_error(request: Request, exc: LLMError) -> JSONResponse:
+        # 503 (transitorio: 429/timeout/5xx) o 422 (permanente: 4xx non-429).
+        if exc.retryable:
+            return _make_response(503, "llm_unavailable", "LLM backend temporarily unavailable")
+        return _make_response(422, "llm_rejected", "Request rejected by LLM backend")
+
+    @app.exception_handler(EmbeddingError)
+    async def _on_embedding_error(request: Request, exc: EmbeddingError) -> JSONResponse:
+        # Stesso schema di LLMError: transiente -> 503, permanente -> 422.
+        if exc.retryable:
+            return _make_response(
+                503, "embedding_unavailable", "Embedding backend temporarily unavailable"
+            )
+        return _make_response(422, "embedding_rejected", "Request rejected by embedding backend")
 
 
 # -----------------------------------------------------------------------------
