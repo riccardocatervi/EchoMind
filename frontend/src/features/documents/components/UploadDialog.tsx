@@ -77,9 +77,7 @@ export function UploadDialog() {
           <div className="space-y-1">
             <Progress value={progress} />
             <p className="text-xs text-muted-foreground">
-              {progress < 100
-                ? t("upload.progress", { percent: progress })
-                : t("upload.checking")}
+              {progress < 100 ? t("upload.progress", { percent: progress }) : t("upload.checking")}
             </p>
           </div>
         )}

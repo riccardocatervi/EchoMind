@@ -35,15 +35,9 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     # Ordine rilevante per la semantica del lifecycle:
     # pending < uploaded < transcribed < extracted < completed; failed e' terminale.
-    op.execute(
-        "ALTER TYPE document_status ADD VALUE IF NOT EXISTS 'transcribed' AFTER 'uploaded'"
-    )
-    op.execute(
-        "ALTER TYPE document_status ADD VALUE IF NOT EXISTS 'extracted' AFTER 'transcribed'"
-    )
-    op.execute(
-        "ALTER TYPE document_status ADD VALUE IF NOT EXISTS 'completed' AFTER 'extracted'"
-    )
+    op.execute("ALTER TYPE document_status ADD VALUE IF NOT EXISTS 'transcribed' AFTER 'uploaded'")
+    op.execute("ALTER TYPE document_status ADD VALUE IF NOT EXISTS 'extracted' AFTER 'transcribed'")
+    op.execute("ALTER TYPE document_status ADD VALUE IF NOT EXISTS 'completed' AFTER 'extracted'")
 
 
 def downgrade() -> None:
