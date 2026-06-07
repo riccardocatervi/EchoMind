@@ -96,6 +96,14 @@ const it = {
   "profile.password.submit": "Aggiorna password",
   "profile.password.success": "Password aggiornata con successo.",
   "profile.password.mismatch": "Le password non corrispondono.",
+  "profile.language.title": "Lingua di output",
+  "profile.language.subtitle":
+    "Lingua usata per riassunti, grafi di conoscenza e risposte alle domande.",
+  "profile.language.it": "Italiano",
+  "profile.language.en": "English",
+  "profile.language.success": "Lingua aggiornata.",
+  "profile.language.error": "Impossibile aggiornare la lingua. Riprova.",
+
   "profile.delete.title": "Elimina account",
   "profile.delete.warning":
     "Tutti i tuoi documenti, trascrizioni, riassunti e grafi di conoscenza verranno eliminati definitivamente insieme all'account. Questa operazione è irreversibile.",

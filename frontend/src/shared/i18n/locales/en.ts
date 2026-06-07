@@ -92,6 +92,14 @@ const en = {
   "profile.password.submit": "Update password",
   "profile.password.success": "Password updated successfully.",
   "profile.password.mismatch": "Passwords do not match.",
+  "profile.language.title": "Output language",
+  "profile.language.subtitle":
+    "Language used for summaries, knowledge graphs and question answers.",
+  "profile.language.it": "Italiano",
+  "profile.language.en": "English",
+  "profile.language.success": "Language updated.",
+  "profile.language.error": "Unable to update language. Please try again.",
+
   "profile.delete.title": "Delete account",
   "profile.delete.warning":
     "All your documents, transcripts, summaries and knowledge graphs will be permanently deleted along with your account. This action is irreversible.",

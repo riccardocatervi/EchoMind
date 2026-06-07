@@ -38,8 +38,10 @@ export function AuthShell({ title, description, children }: AuthShellProps) {
     <div className="relative flex min-h-screen flex-col bg-background px-4">
       <GraphBackground />
 
-      {/* Controlli tema / lingua in alto a destra */}
-      <div className="absolute right-4 top-4 z-10 flex items-center gap-1">
+      {/* Controlli tema / lingua in alto a destra.
+       * z-20 > z-10 del container della card (flex-1): evita che il container
+       * (che copre l'intera viewport) intercetti i click sui bottoni. */}
+      <div className="absolute right-4 top-4 z-20 flex items-center gap-1">
         <LanguageSwitcher />
         <ThemeToggle />
       </div>

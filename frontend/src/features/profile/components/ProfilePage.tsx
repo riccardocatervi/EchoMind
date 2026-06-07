@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { ArrowLeft, Loader2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -16,12 +17,23 @@ import {
   AlertDialogTrigger,
 } from "@/shared/components/ui/alert-dialog";
 import { Button } from "@/shared/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/shared/components/ui/card";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { api } from "@/shared/api/axios";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { supabase } from "@/features/auth/lib/supabaseClient";
+import { profileKeys } from "@/features/profile/api/keys";
+import { updateMyProfile } from "@/features/profile/api/requests";
+import { useProfile } from "@/features/profile/api/queries";
+import type { ProfileRead } from "@/features/profile/schemas/profile";
+import { SUPPORTED_LANGUAGES, type SupportedLang } from "@/shared/i18n";
 
 /**
  * Pagina profilo: saluto personalizzato + cambio nome, email e password.
@@ -71,6 +83,7 @@ export function ProfilePage() {
         />
         <EmailSection />
         <PasswordSection />
+        <LanguageSection />
       </div>
 
       {/* Zona pericolo: eliminazione account */}
@@ -310,6 +323,63 @@ function PasswordSection() {
             {t("profile.password.submit")}
           </Button>
         </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Sezione lingua di output                                                    */
+/* -------------------------------------------------------------------------- */
+function LanguageSection() {
+  const { t, i18n } = useTranslation();
+  const queryClient = useQueryClient();
+  const { data: profile } = useProfile();
+  const [submitting, setSubmitting] = useState(false);
+
+  // Lingua corrente: usa il profilo come fonte di verita' (se disponibile),
+  // altrimenti cade sul valore locale di i18n.
+  const current = (profile?.preferred_language ?? i18n.language) as SupportedLang;
+
+  async function handleSelect(lang: SupportedLang) {
+    if (lang === current || submitting) return;
+    setSubmitting(true);
+    try {
+      const updated = await updateMyProfile({ preferred_language: lang });
+      // Aggiorna la cache e la lingua locale in sincronia.
+      queryClient.setQueryData<ProfileRead>(profileKeys.me, updated);
+      void i18n.changeLanguage(lang);
+      toast.success(t("profile.language.success"));
+    } catch {
+      toast.error(t("profile.language.error"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Card className="shadow-[0_0_30px_rgba(99,120,220,0.15)] ring-1 ring-white/5">
+      <CardHeader>
+        <CardTitle className="text-base">{t("profile.language.title")}</CardTitle>
+        <CardDescription className="text-xs">{t("profile.language.subtitle")}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex gap-2">
+          {SUPPORTED_LANGUAGES.map((lang) => (
+            <Button
+              key={lang}
+              variant={lang === current ? "default" : "outline"}
+              size="sm"
+              disabled={submitting}
+              onClick={() => void handleSelect(lang)}
+            >
+              {submitting && lang !== current && (
+                <Loader2 className="animate-spin" aria-hidden="true" />
+              )}
+              {t(`profile.language.${lang}`)}
+            </Button>
+          ))}
+        </div>
       </CardContent>
     </Card>
   );

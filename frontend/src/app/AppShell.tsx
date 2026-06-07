@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { LogOut, Network, UserRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link, Outlet } from "react-router-dom";
@@ -33,13 +33,20 @@ export function AppShell() {
   const { t, i18n } = useTranslation();
   const { data: profile } = useProfile();
 
-  // Sincronizza la lingua dell'interfaccia dalla preferenza salvata sul profilo.
-  // Questo assicura che, al login, la lingua preferita (it/en) venga applicata
-  // anche se diversa da quella memorizzata nel localStorage locale.
-  // L'effetto e' no-op se la lingua e' gia' quella corrente.
+  // Sincronizza la lingua al LOGIN: applica la preferenza salvata sul profilo
+  // la prima volta che il profilo diventa disponibile nella sessione corrente.
+  //
+  // Il ref impedisce che refetch successivi (window focus, navigazione) tornino
+  // a sovrascrivere una lingua cambiata dall'utente nella stessa sessione.
+  // Il ref si azzera al dismount (logout/remount): il prossimo login riapplica
+  // la preferenza salvata correttamente.
+  const didSyncLanguageRef = useRef(false);
   useEffect(() => {
-    if (profile?.preferred_language && profile.preferred_language !== i18n.language) {
-      void i18n.changeLanguage(profile.preferred_language);
+    if (profile?.preferred_language && !didSyncLanguageRef.current) {
+      didSyncLanguageRef.current = true;
+      if (profile.preferred_language !== i18n.language) {
+        void i18n.changeLanguage(profile.preferred_language);
+      }
     }
   }, [profile?.preferred_language, i18n]);
 

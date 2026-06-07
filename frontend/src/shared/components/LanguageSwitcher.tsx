@@ -1,6 +1,9 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
+import { profileKeys } from "@/features/profile/api/keys";
 import { updateMyProfile } from "@/features/profile/api/requests";
+import type { ProfileRead } from "@/features/profile/schemas/profile";
 import { useAuthStore } from "@/features/auth/store/authStore";
 import type { SupportedLang } from "@/shared/i18n";
 import { SUPPORTED_LANGUAGES } from "@/shared/i18n";
@@ -31,17 +34,34 @@ export function LanguageSwitcher() {
   const next = SUPPORTED_LANGUAGES.find((l) => l !== current) ?? "it";
   const meta = LANG_META[current];
   const isAuthenticated = useAuthStore((state) => state.status === "authenticated");
+  const queryClient = useQueryClient();
 
   function handleClick() {
+    // 1. Cambia subito la lingua locale.
     void i18n.changeLanguage(next);
+
     if (isAuthenticated) {
-      // Persiste la preferenza sul profilo (fire-and-forget).
-      // Errori ignorati silenziosamente: il cambio locale e' gia' immediato.
+      // 2. Aggiorna ottimisticamente la cache del profilo: cosi' l'effect di sync
+      //    in AppShell vede gia' la nuova lingua e non la sovrascrive al prossimo
+      //    caricamento del profilo.
+      const cached = queryClient.getQueryData<ProfileRead>(profileKeys.me);
+      if (cached) {
+        queryClient.setQueryData<ProfileRead>(profileKeys.me, {
+          ...cached,
+          preferred_language: next,
+        });
+      }
+
+      // 3. Persiste la preferenza sul server (fire-and-forget).
+      //    In caso di successo la cache viene aggiornata con il dato reale.
+      //    In caso di errore la cache resta ottimistica: rimane coerente con la
+      //    lingua locale e verra' corretta al prossimo fetch del profilo.
       void (async () => {
         try {
-          await updateMyProfile({ preferred_language: next });
+          const updated = await updateMyProfile({ preferred_language: next });
+          queryClient.setQueryData<ProfileRead>(profileKeys.me, updated);
         } catch {
-          // noop: preferenza gia' applicata localmente
+          // noop: la lingua e' gia' applicata localmente e in cache
         }
       })();
     }
