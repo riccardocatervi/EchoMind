@@ -71,6 +71,8 @@ class _FakeGraphStore:
 
     async def delete_document_graph(self, *, owner_id: UUID, document_id: UUID) -> None: ...
 
+    async def delete_owner_graph(self, *, owner_id: UUID) -> None: ...
+
 
 class _FakeExtractor:
     def __init__(self, *, exc: Exception | None = None) -> None:

@@ -5,14 +5,22 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { useAuthStore } from "@/features/auth/store/authStore";
 
+/**
+ * Il router di test parte da /protected (rotta autenticata).
+ * - "/" e' la landing page (destinazione del redirect quando non autenticato)
+ * - "/protected" e' dentro ProtectedRoute
+ *
+ * Questa struttura rispecchia il router reale dell'app, dove ProtectedRoute
+ * redirige a "/" (non a "/login") cosi' il logout torna alla home.
+ */
 function renderProtected() {
   return render(
-    <MemoryRouter initialEntries={["/"]}>
+    <MemoryRouter initialEntries={["/protected"]}>
       <Routes>
+        <Route path="/" element={<div>Landing page</div>} />
         <Route element={<ProtectedRoute />}>
-          <Route path="/" element={<div>Area protetta</div>} />
+          <Route path="/protected" element={<div>Area protetta</div>} />
         </Route>
-        <Route path="/login" element={<div>Pagina login</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -23,9 +31,9 @@ describe("ProtectedRoute", () => {
     useAuthStore.setState({ session: null, status: "unauthenticated" });
   });
 
-  it("reindirizza al login se non autenticato", () => {
+  it("reindirizza alla home se non autenticato", () => {
     renderProtected();
-    expect(screen.getByText("Pagina login")).toBeInTheDocument();
+    expect(screen.getByText("Landing page")).toBeInTheDocument();
   });
 
   it("rende l'area protetta se autenticato", () => {

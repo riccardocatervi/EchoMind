@@ -24,11 +24,16 @@ export type SupportedLang = (typeof SUPPORTED_LANGUAGES)[number];
 const STORAGE_KEY = "echomind_lang";
 
 function getInitialLanguage(): SupportedLang {
-  const stored = localStorage.getItem(STORAGE_KEY) as SupportedLang | null;
-  if (stored && SUPPORTED_LANGUAGES.includes(stored)) return stored;
-  // Rilevamento browser: navigator.language e' tipo "it-IT" o "en-US"
-  const browserLang = navigator.language.split("-")[0] as SupportedLang;
-  return SUPPORTED_LANGUAGES.includes(browserLang) ? browserLang : "it";
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY) as SupportedLang | null;
+    if (stored && SUPPORTED_LANGUAGES.includes(stored)) return stored;
+    // Rilevamento browser: navigator.language e' tipo "it-IT" o "en-US"
+    const browserLang = navigator.language.split("-")[0] as SupportedLang;
+    return SUPPORTED_LANGUAGES.includes(browserLang) ? browserLang : "it";
+  } catch {
+    // Ambiente senza localStorage (es. test): default a italiano
+    return "it";
+  }
 }
 
 void i18n.use(initReactI18next).init({
@@ -45,7 +50,11 @@ void i18n.use(initReactI18next).init({
 
 // Persisti la lingua scelta nel localStorage ogni volta che cambia
 i18n.on("languageChanged", (lang: string) => {
-  localStorage.setItem(STORAGE_KEY, lang);
+  try {
+    localStorage.setItem(STORAGE_KEY, lang);
+  } catch {
+    // Ambiente senza localStorage (es. test): ignora
+  }
 });
 
 export default i18n;
