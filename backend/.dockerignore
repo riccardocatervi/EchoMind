@@ -1,0 +1,21 @@
+# Riduce il contesto di build inviato al daemon Docker → build piu' veloci e
+# immagini piu' pulite. NB: alembic/ e alembic.ini NON vanno esclusi: servono
+# per `alembic upgrade head` dentro il container (migrazioni su Supabase).
+
+# Virtualenv locale (lo ricostruiamo dentro l'immagine con uv sync)
+.venv/
+
+# Cache di tooling
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Mai dentro l'immagine: i segreti vivono solo come variabili d'ambiente
+.env
+.env.*
+!.env.example
