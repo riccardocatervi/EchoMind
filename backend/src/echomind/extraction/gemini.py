@@ -23,6 +23,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from itertools import batched
 
 from google import genai
@@ -174,8 +175,11 @@ class GeminiEmbedder:
         vectors: list[list[float]] = []
         for batch in batched(texts, self._batch_size):
             try:
+                # partial (non lambda): valuta list(batch) subito -> niente closure
+                # sulla variabile di loop (no ruff B023) e mypy inferisce il tipo.
                 response = _call_with_retry(
-                    lambda batch=batch: self._client.models.embed_content(
+                    partial(
+                        self._client.models.embed_content,
                         model=self._model,
                         contents=list(batch),
                         config=types.EmbedContentConfig(output_dimensionality=self._dimensions),
