@@ -1,0 +1,59 @@
+# =============================================================================
+# Gitleaks — configurazione custom per EchoMind
+#
+# Strategia di rigore:
+#
+# Le regole built-in di gitleaks restano TUTTE attive.
+# L'allowlist è chirurgico: ignora SOLO le stringhe che soddisfano
+# CONTEMPORANEAMENTE entrambe le condizioni:
+#
+#   (1) Il file vive in `backend/tests/` o `.github/workflows/`
+#   (2) Il valore inizia con uno dei prefissi convenzionali dummy:
+#       `test-`, `ci-dummy-`, `wrong-`
+#
+# Conseguenze pratiche:
+#   - Una stringa `test-secret-…` in un file di test → whitelist (ok)
+#   - Una stringa `sk-abc123…` (OpenAI key) in un file di test → CAUGHT
+#   - Una stringa `test-secret-…` nel codice di produzione → CAUGHT
+#   - Una stringa di prod che usa per errore il prefisso `test-…` → CAUGHT
+#     (probabile bug, va comunque visto)
+#
+# Convenzione che ne deriva (vincolante per gli sviluppatori):
+#   *Ogni secret hardcoded nei test/workflow deve iniziare con un
+#   prefisso `test-`, `ci-dummy-` o `wrong-`*. Se nascesse l'esigenza
+#   di un nuovo prefisso, va aggiunto qui (e nella PR si discute il perché).
+#
+# Documentazione: https://github.com/gitleaks/gitleaks#configuration
+# =============================================================================
+
+title = "EchoMind gitleaks config"
+
+# Carica tutte le regole built-in di gitleaks (OpenAI, AWS, GitHub, JWT,
+# Generic API Key, Private Key, ecc.) prima di applicare l'allowlist.
+[extend]
+useDefault = true
+
+# -----------------------------------------------------------------------------
+# Allowlist: paths AND regexes (entrambi devono matchare)
+# -----------------------------------------------------------------------------
+[allowlist]
+description = "Dummy test/CI secret strings (only with dummy prefix in test/workflow paths)"
+
+# Path: solo questi due rami della codebase sono candidati a whitelist
+paths = [
+    '''backend/tests/.*''',
+    '''\.github/workflows/.*''',
+]
+
+# Regex: il valore (match completo del leak rilevato) deve iniziare con
+# uno dei prefissi convenzionali per essere whitelisted.
+# `regexTarget = "match"` confronta contro il valore captured dalla regola,
+# non contro l'intera riga.
+regexTarget = "match"
+regexes = [
+    '''^(?:test|ci-dummy|wrong)-[a-zA-Z0-9_-]+''',
+]
+
+# CONDITION = AND → entrambi (paths E regexes) devono matchare per skip.
+# Senza, di default sarebbe OR (troppo permissivo).
+condition = "AND"

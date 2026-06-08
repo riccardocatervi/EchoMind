@@ -1,0 +1,132 @@
+# =============================================================================
+# EchoMind — Stack di PRODUZIONE (da eseguire sull'EC2).
+#
+# Avvio sull'EC2 (dalla root del repo):
+#   docker compose -f infra/docker-compose.prod.yml up -d --build
+# Migrazioni schema su Supabase (one-off, prima del primo avvio):
+#   docker compose -f infra/docker-compose.prod.yml run --rm api alembic upgrade head
+#
+# Differenze chiave rispetto a docker-compose.dev.yml:
+#   - NIENTE Postgres/Neo4j locali: in produzione sono SaaS esterni (Supabase,
+#     Neo4j AuraDB). Qui restano solo i broker EFFIMERI (RabbitMQ, Redis) +
+#     i due processi applicativi (api, worker), che girano dalla STESSA immagine.
+#   - I segreti arrivano da `../.env.production` (root del repo), MAI committato.
+#   - RabbitMQ/Redis non pubblicano porte sull'host: sono raggiungibili solo
+#     dentro la rete compose (riduce la superficie d'attacco).
+#   - Solo l'API pubblica la porta 8000 (origin per CloudFront).
+# =============================================================================
+
+name: echomind-prod
+
+networks:
+  echomind:
+    driver: bridge
+
+# Volumi per la persistenza dei broker. NB: contengono solo stato EFFIMERO
+# (code/risultati dei job in volo). I dati veri vivono nei SaaS.
+volumes:
+  rabbitmq-data:
+  redis-data:
+
+services:
+  # ---------------------------------------------------------------------------
+  # API — FastAPI servita da uvicorn. Unico servizio che espone una porta verso
+  # l'host (8000), su cui CloudFront instrada le richieste /api/*.
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    image: echomind-backend:latest
+    restart: unless-stopped
+    # I segreti/config: file unico alla root del repo (creato a mano sull'EC2).
+    env_file:
+      - ../.env.production
+    # Override degli endpoint dei broker: dentro la rete compose l'hostname e'
+    # il NOME DEL SERVIZIO, non localhost. Sovrascrive eventuali valori in .env.
+    environment:
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672//
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - echomind
+    # Comando di default dell'immagine = uvicorn (vedi Dockerfile). Non serve
+    # ridichiararlo qui.
+
+  # ---------------------------------------------------------------------------
+  # WORKER — Celery. Stessa immagine dell'API, comando diverso. concurrency=1
+  # per stare comodi nella RAM del t3.micro (1 GB) insieme a rabbitmq+redis.
+  # ---------------------------------------------------------------------------
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    image: echomind-backend:latest
+    restart: unless-stopped
+    env_file:
+      - ../.env.production
+    environment:
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672//
+      REDIS_URL: redis://redis:6379/0
+    command:
+      - celery
+      - -A
+      - echomind.worker.celery_app:celery_app
+      - worker
+      - -l
+      - info
+      - -Q
+      - echomind.default
+      - --concurrency=1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - echomind
+
+  # ---------------------------------------------------------------------------
+  # RABBITMQ — broker Celery. Immagine senza "management" UI in prod (piu'
+  # leggera; per debug si puo' temporaneamente tornare alla variante -management).
+  # ---------------------------------------------------------------------------
+  rabbitmq:
+    image: rabbitmq:3.13-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - echomind
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # REDIS — result backend Celery + cache. maxmemory contenuta per il t3.micro.
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - echomind
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s

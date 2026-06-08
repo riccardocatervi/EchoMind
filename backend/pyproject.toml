@@ -1,0 +1,234 @@
+# =============================================================================
+# EchoMind — Backend project metadata e configurazione tooling.
+#
+# Standard di riferimento:
+#   - PEP 621: project metadata in pyproject.toml
+#   - PEP 735: dependency-groups (alternativa moderna agli "extras")
+#   - PEP 660: editable installs (usata da `uv sync`)
+#
+# Layout: src-layout. Il codice vive in src/echomind/ — non importabile senza
+# install, il che evita falsi positivi nei test.
+# =============================================================================
+
+[project]
+name = "echomind"
+version = "0.0.0"
+description = "AI-Powered GraphRAG: trasforma documenti e audio in grafi di conoscenza interattivi."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Riccardo Catervi" }]
+keywords = ["graphrag", "knowledge-graph", "llm", "fastapi", "celery"]
+
+# Dipendenze runtime — popolate in M1.
+# Principio: ogni libreria entra solo quando c'è codice che la usa.
+# Versioni pinning >= per evitare breaking changes minori; uv.lock fissa
+# l'esatta versione installata (riproducibilità garantita).
+dependencies = [
+    # --- Web framework + server ASGI ---
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",      # standard => uvloop + httptools (perf)
+
+    # --- Validation & settings ---
+    "pydantic>=2.9.0",                 # core v2 (Rust-backed, 10x più veloce di v1)
+    "pydantic-settings>=2.6.0",        # BaseSettings spostata in pacchetto separato dal v2
+
+    # --- Database ---
+    "sqlalchemy[asyncio]>=2.0.36",     # ORM async-native con type hints di prima classe
+    "asyncpg>=0.30.0",                 # driver Postgres async più veloce
+    "alembic>=1.14.0",                 # migrazioni schema (versionate, autogen)
+
+    # --- Auth (validation JWT firmati da Supabase) ---
+    "python-jose[cryptography]>=3.3.0",
+
+    # --- Logging strutturato ---
+    "structlog>=24.4.0",
+
+    # --- Object storage (M2: Backblaze B2 via S3-compatible API) ---
+    "boto3>=1.35.0",                   # client S3-compatible (B2, MinIO, R2, Wasabi, AWS)
+    "botocore>=1.35.0",                # core boto3 (esplicito per pinning)
+
+    # --- MIME detection server-side (M2) ---
+    # Richiede libmagic a livello di sistema:
+    #   - macOS:  brew install libmagic
+    #   - Ubuntu: apt install libmagic1
+    "python-magic>=0.4.27",
+
+    # --- Async job queue (M3: Celery con broker RabbitMQ + backend Redis) ---
+    # L'extra [redis] aggiunge il client redis per il result backend. Il broker
+    # RabbitMQ è coperto da kombu/py-amqp, già dipendenze transitive di Celery.
+    # Trascina anche billiard (prefork), vine, amqp.
+    "celery[redis]>=5.4.0",
+
+    # --- Media processing (M4: parsing documenti + trascrizione audio) ---
+    # OpenAI SDK: client Whisper per la trascrizione audio --> testo.
+    "openai>=1.50.0",
+    # Estrazione testo da PDF. Puro Python, nessuna dipendenza di sistema.
+    "pypdf>=5.0.0",
+    # Estrazione testo da DOCX (Open XML). NB: il package importabile è `docx`.
+    "python-docx>=1.1.0",
+    # Manipolazione audio: chunking sotto il limite di 25MB di Whisper.
+    # Richiede ffmpeg a livello di sistema (come libmagic per python-magic):
+    #   - macOS:  brew install ffmpeg
+    #   - Ubuntu: apt install ffmpeg
+    "pydub>=0.25.1",
+
+    # --- Knowledge extraction (M5: grafo di conoscenza + riassunti + embeddings) ---
+    # SDK unificato Google Gen AI: Gemini per estrazione/riassunto + embeddings.
+    # Una sola credenziale (GEMINI_API_KEY da Google AI Studio, free tier).
+    "google-genai>=1.0.0",
+    # Driver ufficiale Neo4j (Bolt). Usato in modalita' SINCRONA + asyncio.to_thread
+    # (come boto3/OpenAI: evita l'affinita' loop<->client tra i task del worker).
+    "neo4j>=5.24.0",
+    # Tipo SQLAlchemy `Vector` + supporto pgvector per gli embeddings su Postgres.
+    "pgvector>=0.3.0",
+    # Community detection (Louvain) in-process: niente plugin GDS richiesto su Neo4j
+    # (portabile anche su AuraDB free tier).
+    "networkx>=3.3",
+    # Algebra vettoriale per la similarita' coseno nella deduplicazione entita'.
+    "numpy>=2.0",
+]
+
+[project.urls]
+Repository = "https://github.com/riccardocatervi/EchoMind"
+
+# -----------------------------------------------------------------------------
+# Build backend: hatchling è il default moderno (più veloce e meno bug di setuptools).
+# -----------------------------------------------------------------------------
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/echomind"]
+
+# -----------------------------------------------------------------------------
+# Dependency groups (PEP 735). Si installano con `uv sync --all-groups`.
+# Differenza vs `[project.optional-dependencies]`: i groups NON finiscono nel
+# wheel pubblicato; restano sviluppo-only. È esattamente ciò che vogliamo.
+# -----------------------------------------------------------------------------
+[dependency-groups]
+dev = [
+    # --- Linting / typing ---
+    "ruff>=0.6.0",
+    "mypy>=1.11.0",
+
+    # --- Testing ---
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0",
+    "httpx>=0.27.0",                   # AsyncClient per testare endpoint FastAPI
+    "pyjwt>=2.9.0",                    # firma JWT nei test (più ergonomica di python-jose)
+    "moto[s3]>=5.0.0",                 # mock S3 in-memory per test storage
+
+    # --- Tooling ---
+    "pre-commit>=3.8.0",
+
+    # --- Stub di tipo (mypy strict) ---
+    "types-python-jose>=3.3.0",
+    "boto3-stubs[s3]>=1.35.0",         # type hints per boto3 (mypy strict)
+]
+
+# =============================================================================
+# RUFF — linter + formatter. Sostituisce flake8, isort, black, pyupgrade, ...
+# in un solo binario scritto in Rust (10-100x più veloce).
+# =============================================================================
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# Set di regole pragmatico per progetto greenfield. Spiegazione:
+#   E, W = pycodestyle (PEP 8)
+#   F    = pyflakes (errori reali: import inutilizzati, var non definite)
+#   I    = isort (import ordering)
+#   B    = bugbear (anti-pattern comuni che producono bug subdoli)
+#   UP   = pyupgrade (suggerisce sintassi moderna)
+#   SIM  = simplify (es. usare `if x` invece di `if x == True`)
+#   RUF  = regole specifiche di ruff
+#   N    = pep8-naming (snake_case, PascalCase)
+#   ASYNC= bug comuni in codice async
+#   S    = bandit (security, es. hardcoded passwords)
+#   C4   = comprehensions migliori
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "N", "ASYNC", "S", "C4"]
+# S101 = "uso di assert": disattivato perché in pytest gli assert sono il punto.
+# E501 = line-length: già gestito dal formatter, non duplichiamo.
+ignore = ["S101", "E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Nei test relax delle regole security e linting più severo.
+"tests/**" = ["S", "N802", "N806"]
+
+[tool.ruff.format]
+# Quote double, identico a Black. Niente magic-trailing-comma drift.
+quote-style = "double"
+indent-style = "space"
+
+# =============================================================================
+# MYPY — type checker. Strict mode: ogni funzione deve avere annotazioni.
+# In M1+ aggiungeremo il plugin Pydantic per supporto BaseModel discriminato.
+# =============================================================================
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+show_error_codes = true
+pretty = true
+
+# I file di test possono essere meno rigorosi (es. fixture senza tipo)
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+# Alcune librerie non spediscono stub di tipo (o sono incomplete): silenziamo
+# solo "import-untyped" per questi pacchetti, senza allentare lo strict altrove.
+# - celery/kombu: dynamically typed by design (M3)
+# - pydub: nessuno stub; docx (python-docx): tipi incompleti (M4)
+# - networkx, pgvector: niente py.typed marker (M5)
+# NB: openai/pypdf (M4) e neo4j/google-genai (M5) SONO tipizzati --> non vanno qui.
+[[tool.mypy.overrides]]
+module = ["celery.*", "kombu.*", "pydub.*", "docx.*", "networkx.*", "pgvector.*"]
+ignore_missing_imports = true
+
+# =============================================================================
+# PYTEST
+# =============================================================================
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+# asyncio_mode=auto: i test `async def` vengono eseguiti automaticamente,
+# senza dover decorare ognuno con @pytest.mark.asyncio.
+asyncio_mode = "auto"
+addopts = [
+    "-ra",                   # report di tutti i test non-passed
+    "--strict-markers",      # marker non dichiarati = errore (evita typo silenziosi)
+    "--strict-config",       # qualsiasi opzione sconosciuta = errore
+]
+filterwarnings = [
+    "error",                 # warning = errore (forza pulizia)
+    "ignore::DeprecationWarning:pkg_resources",
+]
+
+# =============================================================================
+# COVERAGE
+# =============================================================================
+[tool.coverage.run]
+source = ["src/echomind"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "\\.\\.\\.",
+]
+show_missing = true
+skip_covered = false

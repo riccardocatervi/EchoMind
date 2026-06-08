@@ -1,0 +1,41 @@
+# Forza line ending LF in repo (anche su Windows).
+# Senza questo, sviluppatori Windows committano CRLF e i diff diventano illeggibili.
+
+* text=auto eol=lf
+# In .editorconfig abbiamo impostato end_of_line = lf per istruire l'editor. La riga sopra istruisce
+# invece Git stesso. Con text=auto identifica automaticamente i file di testo (vs binari). Con eol=lf
+# Git normalizza a LF nel repository, sempre, su qualunque sistema operativo. Dunque, anche se un dev clona la repo
+# da Windows, Git la normalizza prima del commit.
+
+# File binari: Git non deve provare a fare diff testuale
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.mp3 binary
+*.wav binary
+*.mp4 binary
+# Senza le dichiarazioni sopra, Git proverebbe a fare diff testuale su file binari, confrontando byte per byte
+# come se fossero caratteri, producendo diff illeggibili. Inoltre potrebbe corrompere il file durante merge (inserisce
+# marcatori <<<<<< dentro un PNG), e rallenterebbe anche enormemente git log --stat su file grandi.
+
+# Lockfile: visibili nei diff ma niente merge driver custom
+uv.lock linguist-generated=true
+package-lock.json linguist-generated=true
+pnpm-lock.yaml linguist-generated=true
+# linguist è il tool che GitHub usa per:
+# 1. Calcolare le statistiche del linguaggio (il grafico "Python 78%, JS 15%...")
+# 2. Decidere cosa mostrare nel diff delle PR.
+# I lockfile (uv.lock, ackage-lock.json) sono generati automaticamente dai tool, non scritti a mano.
+# Possono avere migliaia di righe. Senza questa dichiarazione le statistiche del linguaggio vengono skewate.
+#
+# Con linguist-generated=true:
+# - GitHub nasconde questi file nel diff di default.
+# - Le statistiche linguaggio vengono calcolate solo sul codice reale.
+# - I reviewer possono concentrarsi solo su ciò che conta.

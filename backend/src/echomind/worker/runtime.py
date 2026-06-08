@@ -1,0 +1,191 @@
+"""Worker runtime: engine DB dedicato + ponte sync-->async.
+
+Il worker Celery (prefork) è un processo SEPARATO dall'API e SINCRONO: non
+condivide `app.state` né l'engine dell'app FastAPI. Qui forniamo:
+- un engine async dedicato al processo worker, lazy e con `NullPool`
+- `run_async()`, per eseguire coroutine dal corpo sincrono di un task
+
+Perché `NullPool`:
+    Con `asyncio.run()` ogni task gira in un NUOVO event loop. Le connessioni
+    asyncpg sono legate al loop su cui nascono; riusarle su un loop diverso
+    esplode ("attached to a different loop"). NullPool non trattiene connessioni
+    tra un uso e l'altro: ne apre una fresca per ogni operazione, sul loop
+    corrente, e la chiude. Costo: una connessione nuova per task (accettabile al
+    nostro volume). Beneficio: zero problemi di affinità loop<->connessione.
+
+Perché lazy / post-fork:
+    In prefork il padre forka i figli DOPO l'import del modulo. Creare l'engine
+    all'import (nel padre) farebbe ereditare ai figli strutture asyncio/socket
+    --> corruzione. Creandolo al primo task (nel figlio già forkato) lo evitiamo.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Coroutine
+from typing import Any
+
+from google import genai
+from openai import OpenAI
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
+
+from echomind.core.config import get_settings, require_secret
+from echomind.extraction.gemini import GeminiEmbedder, GeminiGraphExtractor, GeminiSummarizer
+from echomind.processing.transcription import OpenAIWhisperTranscriber
+from echomind.services.graph_store import Neo4jGraphStore
+from echomind.services.storage import B2StorageService
+
+# Singleton di PROCESSO (un worker = un processo): inizializzato pigramente al
+# primo task, così la creazione avviene dopo il fork.
+_session_maker: async_sessionmaker[AsyncSession] | None = None
+
+
+def get_worker_session_maker() -> async_sessionmaker[AsyncSession]:
+    """Ritorna il sessionmaker del worker (engine lazy con NullPool).
+
+    Le sessioni prodotte sono di SISTEMA (nessun `SET LOCAL ROLE app_runtime`,
+    nessun claim RLS): il worker gira come ruolo `echomind` (superuser) e
+    bypassa RLS, perché è un componente fidato che aggiorna lo stato dei task
+    per conto del sistema, non di un utente.
+    """
+    global _session_maker
+    if _session_maker is None:
+        settings = get_settings()
+        engine = create_async_engine(
+            str(settings.database_url),
+            poolclass=NullPool,
+            future=True,
+        )
+        _session_maker = async_sessionmaker(
+            bind=engine,
+            expire_on_commit=False,
+            autoflush=False,
+            class_=AsyncSession,
+        )
+    return _session_maker
+
+
+def run_async[T](coro: Coroutine[Any, Any, T]) -> T:
+    """Esegue una coroutine fino al completamento dal corpo sincrono di un task.
+
+    Usa `asyncio.run()`, che crea e chiude un event loop dedicato. Funziona
+    perché il processo worker prefork NON ha un event loop attivo.
+
+    Caveat: invocata dentro un loop già in esecuzione (es. `task_always_eager`
+    in un test pytest-asyncio) solleverebbe RuntimeError. È il motivo per cui i
+    test NON usano eager mode e testano direttamente la coroutine `run_echo`
+    (vedi ADR-0005).
+    """
+    return asyncio.run(coro)
+
+
+# Singleton di PROCESSO per storage e transcriber, lazy come l'engine: costruiti
+# al primo uso (post-fork --> fork-safe) e riusati per tutti i task del worker.
+_storage: B2StorageService | None = None
+_transcriber: OpenAIWhisperTranscriber | None = None
+
+
+def get_worker_storage() -> B2StorageService:
+    """Storage B2 del worker (lazy, post-fork). Serve a scaricare il file da processare.
+
+    Solleva StorageError se le credenziali B2 sono incomplete (in produzione il
+    worker le ha sempre; vedi Settings._validate_b2_credentials_in_production).
+    """
+    global _storage
+    if _storage is None:
+        _storage = B2StorageService.from_settings(get_settings())
+    return _storage
+
+
+def get_worker_transcriber() -> OpenAIWhisperTranscriber:
+    """Transcriber Whisper del worker (lazy, post-fork).
+
+    Costruito SOLO quando serve davvero (un task audio lo invoca via factory):
+    solleva se manca OPENAI_API_KEY. I task su DOCUMENTI non lo chiamano affatto
+    (process_media non usa il transcriber per i documenti), quindi processare un
+    PDF non richiede alcuna API key OpenAI.
+    """
+    global _transcriber
+    if _transcriber is None:
+        settings = get_settings()
+        # require_secret: una OPENAI_API_KEY vuota (placeholder '' nel .env) viene
+        # trattata come assente --> errore chiaro qui, non un 401 criptico da Whisper.
+        api_key = require_secret(
+            settings.openai_api_key,
+            env_name="OPENAI_API_KEY",
+            hint="La trascrizione audio richiede una API key OpenAI.",
+        )
+        client = OpenAI(
+            api_key=api_key,
+            organization=settings.openai_org_id,
+        )
+        _transcriber = OpenAIWhisperTranscriber(client=client, model=settings.whisper_model)
+    return _transcriber
+
+
+# Singleton di PROCESSO per il client Gemini e il graph store Neo4j, lazy post-fork
+# (come l'engine e lo storage). Gli adapter di estrazione (extractor/embedder/
+# summarizer) sono wrapper leggeri sul client condiviso: li costruiamo al volo.
+_genai_client: genai.Client | None = None
+_graph_store: Neo4jGraphStore | None = None
+
+
+def _get_genai_client() -> genai.Client:
+    """Client google-genai condiviso dagli adapter di estrazione (lazy, post-fork).
+
+    require_secret: una GEMINI_API_KEY vuota e' trattata come assente (stesso
+    hardening di OPENAI_API_KEY).
+    """
+    global _genai_client
+    if _genai_client is None:
+        settings = get_settings()
+        api_key = require_secret(
+            settings.gemini_api_key,
+            env_name="GEMINI_API_KEY",
+            hint="L'estrazione del grafo richiede una API key Google AI Studio (Gemini).",
+        )
+        _genai_client = genai.Client(api_key=api_key)
+    return _genai_client
+
+
+def get_worker_extractor() -> GeminiGraphExtractor:
+    """Estrattore di grafo Gemini (wrapper leggero sul client condiviso)."""
+    settings = get_settings()
+    return GeminiGraphExtractor(
+        client=_get_genai_client(),
+        model=settings.gemini_model,
+        thinking_budget=settings.gemini_thinking_budget,
+        max_retries=settings.gemini_max_retries,
+    )
+
+
+def get_worker_embedder() -> GeminiEmbedder:
+    """Embedder Gemini per la dedup semantica + la persistenza pgvector."""
+    settings = get_settings()
+    return GeminiEmbedder(
+        client=_get_genai_client(),
+        model=settings.gemini_embedding_model,
+        dimensions=settings.embedding_dimensions,
+        max_retries=settings.gemini_max_retries,
+    )
+
+
+def get_worker_summarizer() -> GeminiSummarizer:
+    """Summarizer Gemini (map-reduce sui chunk, fase map in parallelo)."""
+    settings = get_settings()
+    return GeminiSummarizer(
+        client=_get_genai_client(),
+        model=settings.gemini_model,
+        thinking_budget=settings.gemini_thinking_budget,
+        max_retries=settings.gemini_max_retries,
+        max_concurrency=settings.extraction_max_concurrency,
+    )
+
+
+def get_worker_graph_store() -> Neo4jGraphStore:
+    """Graph store Neo4j del worker (lazy, post-fork). Solleva se Neo4j non configurato."""
+    global _graph_store
+    if _graph_store is None:
+        _graph_store = Neo4jGraphStore.from_settings(get_settings())
+    return _graph_store

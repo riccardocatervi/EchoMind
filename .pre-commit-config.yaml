@@ -1,0 +1,95 @@
+# =============================================================================
+# Pre-commit hooks — eseguiti localmente prima di ogni `git commit`.
+#
+# Filosofia:
+#   - Hook locali = "fast gates": devono finire in <2s su file modificati.
+#   - CI = "strict gates": esegue tutto su tutto il codice (vedi .github/workflows/ci.yml).
+#   - Non duplichiamo: i due livelli sono complementari.
+#
+# Setup: `make precommit-install`
+# Run manuale su tutto: `make precommit-run`
+# =============================================================================
+
+# Niente CI cloud automatica per pre-commit (lo facciamo noi via GitHub Actions)
+ci:
+  skip: [mypy]  # mypy ha bisogno di dipendenze installate; gira in CI
+
+default_install_hook_types: [pre-commit]
+default_stages: [pre-commit]
+
+repos:
+  # ---------------------------------------------------------------------------
+  # Hook generici di igiene file
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.md$  # markdown usa trailing spaces per <br>
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]  # blocca file >1MB committati per errore
+      - id: check-case-conflict
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  # ---------------------------------------------------------------------------
+  # RUFF — lint + format (sostituisce flake8, isort, black, pyupgrade)
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  # ---------------------------------------------------------------------------
+  # MYPY — type check (strict). Più lento, gira solo qui localmente; in CI
+  # è ripetuto su tutto il codebase (full check).
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        files: ^backend/(src|tests)/
+        args: [--config-file=backend/pyproject.toml]
+        # additional_dependencies si popola in M1+ con pydantic, types-*, ecc.
+        additional_dependencies: []
+
+  # ---------------------------------------------------------------------------
+  # SECRETS SCAN — gitleaks. Blocca commit con chiavi/token rilevati.
+  # Usa il config custom in .gitleaks.toml (allowlist mirato per test/CI).
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  # ---------------------------------------------------------------------------
+  # SECONDA LINEA DI DIFESA — check custom per credenziali REALI nei test/CI.
+  # Gitleaks ha allowlist per le dummy string convenzionali nei test. Questo
+  # hook intercetta il caso opposto: una VERA chiave (OpenAI/AWS/GitHub/...)
+  # copincollata per errore in un file di test o workflow CI.
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: no-real-secrets-in-tests
+        name: Block real credentials in test/CI files
+        entry: python3 scripts/check_no_real_secrets_in_tests.py
+        language: system
+        pass_filenames: false
+        # Lo script scansiona sempre tutti i target — gira sempre, non solo
+        # quando cambiano file dei target (low cost: <100ms su un repo MVP).
+        always_run: true
+
+# Nota: niente hook commit-msg in M0. Il CLAUDE.md impone il formato
+# "[SERVICE] description" (es. "[Backend] Add X"), incompatibile con i tool
+# Conventional Commits standard. Se in futuro vorrai forzarlo a livello
+# automatico, conviene scrivere uno hook custom (regex su [Tag]).

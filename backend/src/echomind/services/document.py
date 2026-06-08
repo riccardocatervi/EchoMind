@@ -1,0 +1,421 @@
+"""DocumentService — orchestrazione del lifecycle upload.
+
+Connessione di tre risorse:
+- DocumentRepository (DB sotto RLS)
+- B2StorageService   (object storage S3-compatible)
+- python-magic       (MIME detection via magic bytes)
+
+Lifecycle handling:
+    init_upload     → INSERT pending, presigned URL
+    confirm_upload  → HEAD + magic bytes + UPDATE status (uploaded | failed)
+    list/get        → READ via repository
+    delete_document → DELETE B2 object + DELETE riga DB (idempotente)
+
+NB: il service NON conosce FastAPI / HTTP. È riutilizzabile da CLI, worker
+Celery (M3), test. Solo l'endpoint conosce HTTP.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import uuid
+from collections.abc import Sequence
+from datetime import datetime
+from typing import Final
+from uuid import UUID
+
+import magic
+
+from echomind.core.language import DEFAULT_LANGUAGE
+from echomind.core.logging import get_logger
+from echomind.db.models import Document, Task
+from echomind.db.repositories import DocumentRepository, TranscriptRepository
+from echomind.services.graph_store import GraphStore
+from echomind.services.storage import (
+    B2StorageService,
+    StorageObjectNotFoundError,
+)
+from echomind.services.task import TaskService
+
+log = get_logger(__name__)
+
+
+# -----------------------------------------------------------------------------
+# Errori di dominio (mappati a HTTP da api/deps.py o exception handlers)
+# -----------------------------------------------------------------------------
+class DocumentError(Exception):
+    """Base class per errori del lifecycle documento."""
+
+
+class DocumentNotFoundError(DocumentError):
+    """Il documento non esiste (o RLS lo nasconde) per l'utente corrente."""
+
+
+class DocumentAlreadyConfirmedError(DocumentError):
+    """confirm_upload chiamato su un documento già 'uploaded' o 'failed'."""
+
+
+class ExtractionNotReadyError(DocumentError):
+    """Trigger di estrazione su un documento senza transcript pronto (--> 409).
+
+    L'estrazione del grafo richiede una trascrizione completata. Finche' non c'e',
+    il documento non e' in uno stato estraibile (Conflict)."""
+
+
+# -----------------------------------------------------------------------------
+# MIME equivalence map
+# -----------------------------------------------------------------------------
+# Per ogni MIME dichiarato dal client, il set di MIME "accettabili" che magic
+# può detectare e confermarlo. Se il MIME rilevato NON è nel set --> mismatch.
+#
+# Lessons learned:
+# - DOCX è uno ZIP archive con XML dentro: magic ritorna 'application/zip'
+# - WAV ha alias storici: audio/wav, audio/x-wav, audio/vnd.wave
+# - M4A condivide il container con MP4 video: magic può ritornare 'video/mp4'
+MIME_EQUIVALENCES: Final[dict[str, frozenset[str]]] = {
+    "application/pdf": frozenset({"application/pdf"}),
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": frozenset(
+        {
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/zip",
+        }
+    ),
+    "text/plain": frozenset({"text/plain"}),
+    # NB "application/octet-stream": libmagic spesso NON riconosce i container
+    # audio (la sua euristica dipende dal magic-database del sistema) e ripiega
+    # sul binario generico. Lo accettiamo SOLO per gli audio: il vero validatore
+    # del contenuto e' la decodifica a valle (ffmpeg nel worker M4), che rifiuta
+    # i non-audio. I documenti restano stretti (octet-stream non accettato):
+    # per PDF/DOCX/TXT libmagic e' affidabile.
+    "audio/mpeg": frozenset({"audio/mpeg", "application/octet-stream"}),
+    "audio/wav": frozenset(
+        {"audio/wav", "audio/x-wav", "audio/vnd.wave", "application/octet-stream"}
+    ),
+    "audio/x-wav": frozenset(
+        {"audio/wav", "audio/x-wav", "audio/vnd.wave", "application/octet-stream"}
+    ),
+    "audio/mp4": frozenset({"audio/mp4", "audio/x-m4a", "video/mp4", "application/octet-stream"}),
+    "audio/x-m4a": frozenset({"audio/mp4", "audio/x-m4a", "video/mp4", "application/octet-stream"}),
+}
+
+
+# Quanti byte scaricare per il magic-bytes detection.
+# 256 byte sono sufficienti per identificare 99% dei formati.
+# Costo: 1 GET range per documento, ~0.2 KB di banda B2 per confirm.
+MAGIC_BYTES_TO_FETCH: Final[int] = 256
+
+
+# -----------------------------------------------------------------------------
+# Service
+# -----------------------------------------------------------------------------
+class DocumentService:
+    """Orchestrazione del lifecycle Document.
+
+    Riceve:
+    - repository: opera nella sessione RLS-bound dell'utente
+    - storage:    client S3-compatible (in dev test: moto)
+    - task_service: opzionale. Se presente, confirm_upload accoda la trascrizione
+      (M4). Opzionale per disaccoppiamento: un DocumentService senza trigger e'
+      legittimo (flussi senza processing); il wiring reale lo inietta sempre.
+    """
+
+    def __init__(
+        self,
+        *,
+        repository: DocumentRepository,
+        storage: B2StorageService,
+        task_service: TaskService | None = None,
+        transcript_repo: TranscriptRepository | None = None,
+        graph_store: GraphStore | None = None,
+    ) -> None:
+        self._repository = repository
+        self._storage = storage
+        self._task_service = task_service
+        # transcript_repo: serve a trigger_extraction (verifica che il transcript
+        # esista prima di accodare). graph_store: best-effort cleanup del sottografo
+        # Neo4j sul delete. Entrambi opzionali: un DocumentService senza di essi
+        # resta valido (flussi senza estrazione); il wiring reale li inietta.
+        self._transcript_repo = transcript_repo
+        self._graph_store = graph_store
+
+    # -------------------------------------------------------------------------
+    # init_upload
+    # -------------------------------------------------------------------------
+    async def init_upload(
+        self,
+        *,
+        owner_id: UUID,
+        filename: str,
+        mime_type: str,
+        size_bytes: int,
+    ) -> tuple[Document, str, datetime]:
+        """Step 1-3 del flow: crea row pending + presigned URL.
+
+        Returns:
+            (document_orm, upload_url, expires_at)
+        """
+        storage_key = _generate_storage_key(owner_id, filename)
+
+        # 1. INSERT documents(status=pending). Sotto RLS la policy
+        #    `document_insert_own` permette solo se owner_id == sub_claim.
+        document = await self._repository.create(
+            owner_id=owner_id,
+            filename=filename,
+            mime_type=mime_type,
+            size_bytes=size_bytes,
+            storage_key=storage_key,
+        )
+
+        # 2. Genera presigned URL PUT con vincolo Content-Length.
+        upload_url, expires_at = await self._storage.generate_presigned_put(
+            storage_key,
+            content_type=mime_type,
+            content_length=size_bytes,
+        )
+
+        log.info(
+            "document_init_upload",
+            document_id=str(document.id),
+            owner_id=str(owner_id),
+            mime_type=mime_type,
+            size_bytes=size_bytes,
+        )
+        return document, upload_url, expires_at
+
+    # -------------------------------------------------------------------------
+    # confirm_upload
+    # -------------------------------------------------------------------------
+    async def confirm_upload(self, *, owner_id: UUID, document_id: UUID) -> Document:
+        """Step 5-9: HEAD + magic-bytes + UPDATE status.
+
+        Idempotente per documenti già 'uploaded': ritorna lo stato corrente
+        senza ri-validare. Per 'failed': solleva DocumentAlreadyConfirmedError
+        (re-tentativo richiede una nuova init_upload).
+
+        Esiti:
+        - HEAD non trova object   → mark_failed('upload_not_received')
+        - size diversa            → mark_failed('size_mismatch')
+        - MIME impostore          → mark_failed('mime_mismatch')
+        - tutto ok                → mark_uploaded
+        """
+        document = await self._require_document(document_id)
+
+        # Idempotency: se già uploaded, ritorna senza ri-validare.
+        if document.status.value == "uploaded":
+            return document
+        if document.status.value == "failed":
+            raise DocumentAlreadyConfirmedError(
+                f"Document {document_id} è in stato 'failed'. "
+                "Avvia una nuova init_upload per ritentare."
+            )
+
+        # 1. HEAD: verifica che l'object esista e size matchi.
+        try:
+            meta = await self._storage.head_object(document.storage_key)
+        except StorageObjectNotFoundError:
+            log.warning(
+                "document_confirm_no_object",
+                document_id=str(document_id),
+                storage_key=document.storage_key,
+            )
+            return await self._repository.mark_failed(document, "upload_not_received")
+
+        if meta.content_length != document.size_bytes:
+            log.warning(
+                "document_confirm_size_mismatch",
+                document_id=str(document_id),
+                declared=document.size_bytes,
+                actual=meta.content_length,
+            )
+            return await self._repository.mark_failed(document, "size_mismatch")
+
+        # 2. Scarica i primi 256 byte --> magic detection.
+        head_bytes = await self._storage.get_object_range(
+            document.storage_key,
+            start=0,
+            end_inclusive=MAGIC_BYTES_TO_FETCH - 1,
+        )
+        detected_mime = await asyncio.to_thread(
+            magic.from_buffer,
+            head_bytes,
+            True,  # mime=True (positional, evita kwargs noise)
+        )
+
+        # 3. Confronto con whitelist di equivalenze
+        if not _mime_matches(declared=document.mime_type, detected=detected_mime):
+            log.warning(
+                "document_confirm_mime_mismatch",
+                document_id=str(document_id),
+                declared=document.mime_type,
+                detected=detected_mime,
+            )
+            return await self._repository.mark_failed(document, "mime_mismatch")
+
+        # 4. All clear: status='uploaded'
+        result = await self._repository.mark_uploaded(document)
+        log.info(
+            "document_confirm_uploaded",
+            document_id=str(document_id),
+            detected_mime=detected_mime,
+        )
+
+        # 5. Trigger M4: accoda la trascrizione asincrona. Siamo qui SOLO sulla
+        #    transizione pending --> uploaded (gli early-return in cima escludono
+        #    i documenti gia' uploaded/failed), quindi parte una sola volta.
+        #    Stessa transazione della request: se l'enqueue fallisce
+        #    (TaskEnqueueError), il rollback annulla anche il mark_uploaded e il
+        #    client puo' ritentare il confirm.
+        if self._task_service is not None:
+            await self._task_service.enqueue_transcribe(
+                owner_id=result.owner_id,
+                document_id=result.id,
+            )
+        return result
+
+    # -------------------------------------------------------------------------
+    # trigger_extraction (M5): avvio manuale / re-run dell'estrazione del grafo
+    # -------------------------------------------------------------------------
+    async def trigger_extraction(
+        self, *, owner_id: UUID, document_id: UUID, language: str = DEFAULT_LANGUAGE
+    ) -> Task:
+        """Accoda l'estrazione del grafo per un documento gia' trascritto.
+
+        Trigger manuale (l'auto-concatenazione avviene nel worker dopo la
+        trascrizione). Richiede un transcript pronto, altrimenti 409. Stessa
+        transazione della request: enqueue fallito --> rollback --> niente riga orfana.
+
+        `language` (it/en): lingua di output per grafo e riassunto. Il chiamante
+        (handler API) risolve la preferenza del profilo utente e la passa qui.
+
+        Raises:
+            DocumentNotFoundError: documento inesistente o non tuo (RLS). --> 404.
+            ExtractionNotReadyError: nessun transcript ancora. --> 409.
+            TaskEnqueueError: broker irraggiungibile. --> 503.
+        """
+        await self._require_document(document_id)  # 404 se assente / non tuo
+        if self._transcript_repo is None or self._task_service is None:
+            raise ExtractionNotReadyError("Trigger di estrazione non configurato")
+        transcript = await self._transcript_repo.get_by_document_id(document_id)
+        if transcript is None:
+            raise ExtractionNotReadyError(
+                f"Document {document_id} non ha ancora un transcript: trascrizione non completata"
+            )
+        return await self._task_service.enqueue_extract(
+            owner_id=owner_id, document_id=document_id, language=language
+        )
+
+    # -------------------------------------------------------------------------
+    # READ
+    # -------------------------------------------------------------------------
+    async def list_documents(
+        self,
+        *,
+        owner_id: UUID,
+        limit: int,
+        offset: int,
+    ) -> Sequence[Document]:
+        """Lista paginata dei documenti dell'utente, ordinati dal più recente."""
+        return await self._repository.list_by_owner(owner_id, limit=limit, offset=offset)
+
+    async def get_document(self, *, document_id: UUID) -> Document:
+        """Dettaglio singolo. Solleva DocumentNotFoundError se assente/nascosto da RLS."""
+        return await self._require_document(document_id)
+
+    # -------------------------------------------------------------------------
+    # DELETE (B2 + DB, ordine deliberato)
+    # -------------------------------------------------------------------------
+    async def delete_document(self, *, document_id: UUID) -> None:
+        """Hard delete: prima B2 object, poi DB row.
+
+        Idempotente:
+        - B2 DELETE su key inesistente è no-op (vedi storage.delete_object)
+        - DB DELETE su id inesistente ritorna False (vedi repository.delete)
+
+        Se DB fallisce dopo B2 OK: il client può rieseguire il DELETE,
+        l'idempotenza garantisce safety.
+        """
+        document = await self._require_document(document_id)
+
+        # Revoca best-effort dei task Celery attivi prima di eliminare i dati.
+        # Obiettivo: interrompere Whisper/Gemini in esecuzione per non consumare
+        # crediti API su un documento che sta per sparire.
+        # Ordine deliberato: revoca --> B2 delete --> DB delete.
+        # - La revoca arriva al worker prima che possa scaricare altri chunk da B2.
+        # - Se task_acks_late causa una re-delivery, il worker trova la riga task
+        #   gia' cascade-deleted --> early return senza API calls (already_done).
+        # Best-effort: se il task_service e' assente o la revoca fallisce,
+        # procediamo comunque con il delete (un credito API sprecato e' meno grave
+        # che bloccare l'eliminazione del documento).
+        if self._task_service is not None:
+            try:
+                await self._task_service.revoke_active_tasks_for_document(document.id)
+            except Exception as exc:
+                log.warning(
+                    "document_delete_revoke_failed",
+                    document_id=str(document_id),
+                    error=str(exc),
+                )
+
+        await self._storage.delete_object(document.storage_key)
+        await self._repository.delete(document_id)
+
+        # Consistenza cross-store: rimuovi anche il sottografo Neo4j del documento.
+        # Best-effort: il grafo potrebbe non esistere o Neo4j essere giu' -- non
+        # blocchiamo la cancellazione del documento. Summary/embeddings (Postgres)
+        # spariscono da soli via FK ON DELETE CASCADE.
+        if self._graph_store is not None:
+            try:
+                await self._graph_store.delete_document_graph(
+                    owner_id=document.owner_id, document_id=document_id
+                )
+            except Exception as exc:
+                log.warning(
+                    "document_delete_graph_cleanup_failed",
+                    document_id=str(document_id),
+                    error=str(exc),
+                )
+
+        log.info(
+            "document_deleted",
+            document_id=str(document_id),
+            storage_key=document.storage_key,
+        )
+
+    # -------------------------------------------------------------------------
+    # Helper interno
+    # -------------------------------------------------------------------------
+    async def _require_document(self, document_id: UUID) -> Document:
+        """get + raise se None. Sotto RLS: ritorna None anche per documenti di altri."""
+        document = await self._repository.get_by_id(document_id)
+        if document is None:
+            raise DocumentNotFoundError(f"Document {document_id} not found")
+        return document
+
+
+# -----------------------------------------------------------------------------
+# Funzioni helper modulo-level
+# -----------------------------------------------------------------------------
+def _generate_storage_key(owner_id: UUID, filename: str) -> str:
+    """Genera la chiave B2 per l'oggetto.
+
+    Format: `users/{owner_id}/{uuid4}{ext}`
+    - prefix per owner: comodo per audit/cleanup massivo via B2 console
+    - uuid4: niente collision, niente enumeration attack
+    - ext preservata: B2 dashboard mostra la categoria corretta, niente
+      impatto sulla sicurezza (RLS + presigned URL non vedono l'ext)
+    """
+    _, ext = os.path.splitext(filename)
+    ext = ext.lower() if ext else ""
+    return f"users/{owner_id}/{uuid.uuid4()}{ext}"
+
+
+def _mime_matches(*, declared: str, detected: str) -> bool:
+    """Confronta MIME dichiarato con quello rilevato, considerando le equivalenze.
+
+    Ritorna True se il rilevato è in `MIME_EQUIVALENCES[declared]`.
+    Se il declared non è in mappa (dovrebbe essere stato rifiutato dallo schema
+    Pydantic, ma defensive coding) → False.
+    """
+    allowed = MIME_EQUIVALENCES.get(declared, frozenset())
+    return detected in allowed

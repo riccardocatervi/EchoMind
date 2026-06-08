@@ -1,0 +1,215 @@
+# =============================================================================
+# EchoMind — Continuous Integration
+#
+# Trigger:
+#   - push su main e develop (verifica che il branch sia sano)
+#   - pull_request verso main e develop (gate prima del merge)
+#
+# Jobs:
+#   - backend-verify: lint + format check + typecheck + test (matrix py3.12)
+#                     con Postgres service per i test integration
+#   - secrets-scan  : gitleaks su tutto il PR diff
+#
+# Filosofia:
+#   - "fail fast": jobs indipendenti girano in parallelo
+#   - cache aggressiva (uv ha cache nativa via setup-uv)
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    # Triggera la CI anche sui branch di sviluppo (feat/, fix/, feature/)
+    # durante il lavoro: feedback continuo senza dover aprire una PR draft.
+    branches: [main, develop, 'feat/**', 'fix/**', 'feature/**']
+  pull_request:
+    branches: [main, develop]
+
+# Permessi minimi (principio least-privilege)
+permissions:
+  contents: read
+
+# Concurrency: un solo run attivo per branch.
+# `head_ref` è il nome del branch quando l'evento è PR (es. "feature/m2-...").
+# `ref_name` è il nome corto del ref nel caso push (es. "main", "feature/m2-...").
+# Usandoli in OR, push e pull_request sullo stesso branch condividono il group
+# → uno cancella l'altro invece di duplicarsi.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Backend: lint, format, types, test (integration con Postgres reale)
+  # ---------------------------------------------------------------------------
+  backend-verify:
+    name: Backend verify (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    defaults:
+      run:
+        working-directory: backend
+
+    # Postgres service: GitHub Actions avvia un container postgres parallelo al job.
+    # Raggiungibile come `localhost:5432` dal runner.
+    services:
+      postgres:
+        # pgvector/pgvector:pg16 = Postgres 16 + estensione pgvector (M5): i test
+        # girano contro un DB reale e la migration 0005 fa CREATE EXTENSION vector.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: echomind
+          POSTGRES_PASSWORD: echomind_dev
+          POSTGRES_DB: echomind
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 5s
+
+    # Env condivise da tutti gli step (test + migration).
+    # Secret JWT è dummy — solo per firmare token nei test, non è reale.
+    env:
+      DATABASE_URL: postgresql+asyncpg://echomind:echomind_dev@localhost:5432/echomind
+      SUPABASE_JWT_ALGORITHM: HS256
+      SUPABASE_JWT_SECRET: ci-dummy-jwt-secret-64-bytes-padding-not-a-real-credential-xxxxxxx
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup uv
+        # Action ufficiale Astral. Cache automatica del download e delle deps.
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Setup Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --all-groups --frozen
+
+      - name: Install system packages (Postgres client + libmagic)
+        # - postgresql-client: psql per applicare init script + aspettare DB pronto
+        # - libmagic1: bindings nativi per python-magic (MIME detection server-side)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client libmagic1
+
+      - name: Apply Postgres dev-role init script
+        # Replica ciò che fa /docker-entrypoint-initdb.d in dev locale:
+        # crea il ruolo non-superuser `app_runtime` necessario per RLS.
+        # GitHub services NON supportano volume mount per initdb.d, quindi
+        # eseguiamo lo SQL manualmente via psql.
+        working-directory: ${{ github.workspace }}
+        env:
+          PGPASSWORD: echomind_dev
+        run: |
+          psql -h localhost -p 5432 -U echomind -d echomind \
+               -f infra/postgres-init/01_dev_role_setup.sql
+
+      - name: Apply Alembic migrations
+        run: uv run alembic upgrade head
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Format check (ruff)
+        run: uv run ruff format --check .
+
+      - name: Type check (mypy)
+        run: uv run mypy src tests
+
+      - name: Tests (pytest + coverage)
+        run: uv run pytest --cov --cov-report=term --cov-report=xml
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: backend/coverage.xml
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Frontend: lint, format check, typecheck, test (vitest), build
+  # ---------------------------------------------------------------------------
+  frontend-verify:
+    name: Frontend verify
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        # Niente package.json di root: pinniamo la versione esplicitamente
+        # (deve combaciare col lockfile e con il campo packageManager).
+        uses: pnpm/action-setup@v4
+        with:
+          version: "11.5.1"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # Node >= 22.13: pnpm 11 (vedi packageManager) ha rimosso il supporto a Node 20.
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint (eslint)
+        run: pnpm lint
+
+      - name: Format check (prettier)
+        run: pnpm format:check
+
+      - name: Type check (tsc)
+        run: pnpm typecheck
+
+      - name: Tests (vitest)
+        run: pnpm test
+
+      - name: Build (vite)
+        run: pnpm build
+
+  # ---------------------------------------------------------------------------
+  # Secrets scan (gitleaks)
+  # ---------------------------------------------------------------------------
+  secrets-scan:
+    name: Secrets scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Storia completa per analizzare tutti i commit del PR
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Esplicita il path del config (di default cerca .gitleaks.toml
+          # nella root ma in alcune versioni è necessario esplicitarlo).
+          GITLEAKS_CONFIG: ${{ github.workspace }}/.gitleaks.toml
+
+      - name: Block real credentials in test/CI files (custom)
+        # Seconda linea di difesa: gitleaks ha un allowlist mirato per le
+        # dummy string convenzionali nei test (vedi .gitleaks.toml). Questo
+        # script intercetta il caso opposto: una VERA chiave (OpenAI/AWS/...)
+        # copincollata per errore in un file di test/workflow.
+        run: python3 scripts/check_no_real_secrets_in_tests.py
