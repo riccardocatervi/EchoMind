@@ -48,9 +48,7 @@ def upgrade() -> None:
     ).scalar()
     if not auth_users_exists:
         op.execute("CREATE SCHEMA IF NOT EXISTS auth")
-        op.execute(
-            "CREATE TABLE auth.users (id uuid PRIMARY KEY DEFAULT gen_random_uuid())"
-        )
+        op.execute("CREATE TABLE auth.users (id uuid PRIMARY KEY DEFAULT gen_random_uuid())")
 
     # -------------------------------------------------------------------------
     # 2. Tabella public.profiles
