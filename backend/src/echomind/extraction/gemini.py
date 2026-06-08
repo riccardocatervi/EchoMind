@@ -178,9 +178,7 @@ class GeminiEmbedder:
                     lambda batch=batch: self._client.models.embed_content(
                         model=self._model,
                         contents=list(batch),
-                        config=types.EmbedContentConfig(
-                            output_dimensionality=self._dimensions
-                        ),
+                        config=types.EmbedContentConfig(output_dimensionality=self._dimensions),
                     ),
                     max_retries=self._max_retries,
                 )
