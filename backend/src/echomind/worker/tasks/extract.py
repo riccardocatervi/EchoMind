@@ -116,6 +116,7 @@ async def run_extract(
     max_chunk_chars: int,
     chunk_overlap_chars: int,
     dedup_threshold: float,
+    max_concurrency: int = 1,
 ) -> ExtractOutcome:
     """Core async dell'estrazione: dal transcript al grafo + summary + embeddings.
 
@@ -173,6 +174,7 @@ async def run_extract(
                 chunk_overlap_chars=chunk_overlap_chars,
                 dedup_threshold=dedup_threshold,
                 language=language,
+                max_concurrency=max_concurrency,
             )
             await graph_store.replace_document_graph(
                 owner_id=owner_id,
@@ -285,6 +287,7 @@ def extract_task(self: Task, task_id: str) -> dict[str, Any] | None:
             max_chunk_chars=settings.extraction_max_chunk_chars,
             chunk_overlap_chars=settings.extraction_chunk_overlap_chars,
             dedup_threshold=settings.entity_dedup_similarity_threshold,
+            max_concurrency=settings.extraction_max_concurrency,
         )
     )
 

@@ -18,9 +18,11 @@ Vincoli ereditati dal backend:
   li emette. Il client deve quindi ottenere il token da Supabase.
 - l'upload e' **diretto a object storage** (presigned URL B2): il browser carica
   il file bypassando la banda del backend.
-- lo stato della pipeline non e' esposto da un endpoint dedicato: gli artefatti
-  (transcript, summary, graph) rispondono 404 finche' non sono pronti.
-- niente push real-time prima di M7 (WebSocket).
+- lo stato della pipeline e' esposto da un campo `status` sulla risorsa Document
+  (`pending --> uploaded --> transcribed --> extracted --> completed`, oppure
+  `failed`): e' la sorgente di verita' del lifecycle. I singoli artefatti
+  (transcript, summary, graph) rispondono comunque 404 finche' non sono pronti.
+- niente push real-time prima di M7 (WebSocket): l'aggiornamento e' via polling.
 
 ## Decisione
 
@@ -53,12 +55,16 @@ parse), invece di un bug silenzioso a valle.
 "riempie" uno slot (`setAccessTokenGetter`) esposto dal client. Inversione di
 dipendenza, come i Protocol del backend.
 
-### 5. Stato della pipeline dedotto via polling
+### 5. Stato della pipeline dal campo `status` + polling
 
-In assenza di un endpoint di stato e di WebSocket (M7), il client deduce la fase
-dal polling degli artefatti: transcript 404 --> "trascrizione"; transcript pronto
-ma summary/graph 404 --> "estrazione"; tutti pronti --> "completato". Il polling
-e' a cascata e si autospegne al primo 200.
+La fase viene letta dal campo `status` della risorsa Document (sorgente di
+verita' del lifecycle), NON dedotta dai 404 dei singoli artefatti. Il client
+fa polling di un **singolo** endpoint -- il documento -- con un `refetchInterval`
+(3 s sul dettaglio, 10 s sulla lista) e abilita *condizionalmente* i componenti
+figli (transcript, summary, graph) in base allo `status`. Il polling si autospegne
+quando lo stato diventa terminale (`completed`/`failed`); una guardia lo ferma
+anche se il documento resta bloccato in uno stato non terminale oltre 10 minuti
+(es. estrazione esaurita per 429 Gemini), lasciando all'utente il re-run manuale.
 
 ### 6. Visualizzazione del grafo
 
@@ -85,8 +91,10 @@ fuori dal bundle iniziale.
 - il chunk del grafo resta grande (~500 kB gzip, quasi tutto Elk): mitigabile
   spostando Elk in un **web worker** (toglie il motore dal chunk e libera il main
   thread). Rimandato a una ottimizzazione mirata.
-- senza WebSocket, una *trascrizione* fallita non e' distinguibile da una in corso
-  (entrambe 404): risolto in M7.
+- l'aggiornamento dello stato e' via polling, non push: c'e' una latenza fino
+  all'intervallo di poll e, per non interrogare all'infinito, una guardia ferma il
+  polling se un documento resta bloccato oltre 10 minuti. Il push real-time
+  (WebSocket) e' rimandato a M7.
 - la validazione zod e' piu' rigida del semplice cast: uno schema disallineato
   rispetto al backend fa fallire la lettura (e' voluto, ma richiede disciplina).
 

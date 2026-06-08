@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AlertTriangle, FileText, Search } from "lucide-react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 
 import { isApiError } from "@/shared/api/axios";
 import { Card, CardContent } from "@/shared/components/ui/card";
@@ -34,6 +35,20 @@ export function DocumentsPage() {
         <div className="space-y-1">
           <h1 className="font-mono text-2xl font-semibold tracking-tight">{t("docs.title")}</h1>
           <p className="text-sm text-muted-foreground">{t("docs.subtitle")}</p>
+          {/* Suggerimento: la lingua di output si cambia nel profilo */}
+          <p className="text-xs text-muted-foreground/70">
+            <Trans
+              i18nKey="docs.languageHint"
+              components={{
+                link: (
+                  <Link
+                    to="/profile"
+                    className="font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                  />
+                ),
+              }}
+            />
+          </p>
         </div>
         <UploadDialog />
       </header>

@@ -15,6 +15,7 @@ import { Loader2 } from "lucide-react";
 
 import { EntityNode } from "@/features/graph/components/EntityNode";
 import { GraphControls } from "@/features/graph/components/GraphControls";
+import { GraphQaPanel } from "@/features/graph/components/GraphQaPanel";
 import { NodeDetailsPanel } from "@/features/graph/components/NodeDetailsPanel";
 import { communityColor } from "@/features/graph/lib/communityColors";
 import { layoutGraph, type EntityNodeData } from "@/features/graph/lib/elkLayout";
@@ -142,6 +143,7 @@ export function GraphViewer({ graph }: { graph: GraphRead }) {
         />
       </ReactFlow>
       <GraphControls graph={graph} />
+      <GraphQaPanel documentId={graph.document_id} />
       {selectedNode && (
         <NodeDetailsPanel
           node={selectedNode}

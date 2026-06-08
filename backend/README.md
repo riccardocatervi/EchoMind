@@ -91,8 +91,11 @@ Tutte le variabili sono tipizzate da Pydantic Settings (`core/config.py`). Valid
 | `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` | Knowledge graph (M5). Obbligatorie in produzione. Dev locale: container Neo4j (`bolt://localhost:7687`, default `echomind_dev`). Vedi [ADR-0007](../docs/adr/0007-knowledge-extraction.md) |
 | `GEMINI_API_KEY` | Google AI Studio: estrazione + riassunto + embeddings (M5). Obbligatoria in produzione; opzionale in dev/test (mockata). Free tier su aistudio.google.com |
 | `GEMINI_MODEL`, `GEMINI_EMBEDDING_MODEL` | Modelli Gemini. Default `gemini-flash-latest` / `gemini-embedding-001` |
+| `GEMINI_THINKING_BUDGET` | Budget di "thinking" di Gemini 2.5+. `-1` (default) = comportamento nativo del modello, ossia thinking abilitato: più qualità sul ragionamento multi-step a costo di latenza. `0` = disattivato (più veloce, lieve calo di qualità). `>0` = budget fisso |
+| `GEMINI_MAX_RETRIES` | Retry per singola chiamata Gemini su errori transienti (429/5xx) con backoff. Default 3. Evita che un 429 isolato faccia fallire l'intero documento |
 | `EMBEDDING_DIMENSIONS` | Dimensione del vettore embedding (deve combaciare con la migration 0005). Default 768 |
 | `EXTRACTION_MAX_CHUNK_CHARS`, `EXTRACTION_CHUNK_OVERLAP_CHARS` | Chunking del testo per l'LLM. Default 12000 / 500 |
+| `EXTRACTION_MAX_CONCURRENCY` | Chunk estratti in parallelo (chiamate Gemini concorrenti). Default 4. Alzalo con tier a pagamento; abbassalo (2–3) sul free tier per ridurre i 429 |
 | `ENTITY_DEDUP_SIMILARITY_THRESHOLD` | Soglia coseno per fondere entita' simili. Default 0.85 |
 | `EXTRACTION_SOFT_TIME_LIMIT_SECONDS` | Soft time limit del task di estrazione. Default 1800 (30 min) |
 
@@ -195,6 +198,7 @@ worker (M4)                          worker (celery, M5)                  datast
 - **Community detection**: Louvain in-process (`networkx`), niente plugin GDS --> portabile su AuraDB free.
 - **Embeddings**: Gemini --> pgvector (`vector(768)`), per la dedup semantica delle entita' e le fondamenta del RAG (M8).
 - **Idempotenza cross-store**: ri-estrarre sostituisce (grafo `DETACH DELETE` + create, summary upsert, embeddings replace); il delete del documento pulisce anche il sottografo Neo4j.
+- **Performance LLM**: i chunk (indipendenti) vengono estratti in parallelo (`EXTRACTION_MAX_CONCURRENCY`, `executor.map` -> ordine preservato e risultato deterministico); la fase *map* del riassunto idem. Ogni chiamata ha retry con backoff sui 429 (`GEMINI_MAX_RETRIES`) cosi' un rate-limit isolato non fa ripartire l'intero documento. Il "thinking" di Gemini 2.5+ resta abilitato di default (`GEMINI_THINKING_BUDGET=-1`, privilegia la qualità); impostalo a `0` se vuoi privilegiare la latenza.
 - **Trigger**: auto-chain best-effort sul transcribe riuscito + `POST /documents/{id}/extract` (re-run / recupero).
 
 ## Layout

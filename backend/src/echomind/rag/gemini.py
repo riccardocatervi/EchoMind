@@ -25,6 +25,7 @@ from google.genai import errors as genai_errors
 from google.genai import types
 
 from echomind.extraction.errors import LLMError
+from echomind.extraction.gemini import _call_with_retry, _thinking_config
 from echomind.rag.prompt import build_context_text, build_system_prompt
 from echomind.rag.schema import RagAnswer, RetrievedContext
 
@@ -41,11 +42,23 @@ class GeminiRagAnswerer:
 
     Costruito dal lifespan dell'API (CP7) se `GEMINI_API_KEY` e' configurata.
     Nessuna istanza nel worker (il RAG e' on-demand, non asincrono).
+
+    Latenza: `thinking_budget=0` disattiva il ragionamento interno (Q&A fattuale
+    ancorato al contesto -> risposta piu' rapida); retry per-chiamata sui 429.
     """
 
-    def __init__(self, *, client: genai.Client, model: str) -> None:
+    def __init__(
+        self,
+        *,
+        client: genai.Client,
+        model: str,
+        thinking_budget: int = 0,
+        max_retries: int = 0,
+    ) -> None:
         self._client = client
         self._model = model
+        self._thinking = _thinking_config(thinking_budget)
+        self._max_retries = max_retries
 
     async def answer(
         self,
@@ -66,15 +79,19 @@ class GeminiRagAnswerer:
 
     def _answer_sync(self, system_prompt: str, user_message: str) -> RagAnswer:
         try:
-            response = self._client.models.generate_content(
-                model=self._model,
-                contents=user_message,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    response_mime_type="application/json",
-                    response_schema=RagAnswer,
-                    temperature=0.1,
+            response = _call_with_retry(
+                lambda: self._client.models.generate_content(
+                    model=self._model,
+                    contents=user_message,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        response_mime_type="application/json",
+                        response_schema=RagAnswer,
+                        temperature=0.1,
+                        thinking_config=self._thinking,
+                    ),
                 ),
+                max_retries=self._max_retries,
             )
         except Exception as exc:
             raise LLMError(f"Gemini RAG fallito: {exc}", retryable=_is_retryable(exc)) from exc

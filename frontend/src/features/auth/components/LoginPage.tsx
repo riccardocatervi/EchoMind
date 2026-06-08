@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link, Navigate, useNavigate } from "react-router-dom";
@@ -6,7 +7,9 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { PasswordInput } from "@/shared/components/PasswordInput";
 import { AuthShell } from "@/features/auth/components/AuthShell";
+import { YetiAvatar } from "@/features/auth/components/YetiAvatar";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { credentialsSchema } from "@/features/auth/schemas/authSchema";
 
@@ -16,14 +19,14 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
+  const [emailFocused, setEmailFocused] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Ref al <form> per il submit programmatico su Enter.
-  // Il Button component ora defaulta a type="button" (fix corretto), ma
-  // aggiungiamo anche il handler esplicito per massima compatibilita'
-  // con browser/password-manager che intercettano il keydown.
   const formRef = useRef<HTMLFormElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
 
   if (status === "authenticated") return <Navigate to="/documents" replace />;
 
@@ -53,7 +56,20 @@ export function LoginPage() {
   }
 
   return (
-    <AuthShell title={t("auth.login.title")} description={t("auth.login.description")}>
+    <AuthShell
+      title={t("auth.login.title")}
+      description={t("auth.login.description")}
+      icon={
+        <YetiAvatar
+          passwordFocused={passwordFocused}
+          passwordVisible={showPassword}
+          emailFocused={emailFocused}
+          emailValue={email}
+          emailInputRef={emailRef}
+          className="h-32 w-32"
+        />
+      }
+    >
       <form
         ref={formRef}
         onSubmit={(event) => void handleSubmit(event)}
@@ -63,12 +79,15 @@ export function LoginPage() {
         <div className="space-y-2">
           <Label htmlFor="email">{t("auth.field.email")}</Label>
           <Input
+            ref={emailRef}
             id="email"
             type="email"
             autoComplete="email"
             required
             value={email}
             onChange={(event) => setEmail(event.target.value)}
+            onFocus={() => setEmailFocused(true)}
+            onBlur={() => setEmailFocused(false)}
             onKeyDown={onKeyDown}
           />
         </div>
@@ -82,12 +101,15 @@ export function LoginPage() {
               {t("auth.login.forgot")}
             </Link>
           </div>
-          <Input
+          <PasswordInput
             id="password"
-            type="password"
             autoComplete="current-password"
             required
             value={password}
+            show={showPassword}
+            onToggleShow={() => setShowPassword((v) => !v)}
+            onFocus={() => setPasswordFocused(true)}
+            onBlur={() => setPasswordFocused(false)}
             onChange={(event) => setPassword(event.target.value)}
             onKeyDown={onKeyDown}
           />

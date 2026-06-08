@@ -17,6 +17,12 @@ interface AuthShellProps {
   title: string;
   description: string;
   children: ReactNode;
+  /**
+   * Icona mostrata in cima alla card, sopra titolo e descrizione.
+   * Predefinita: icona Network di Lucide.
+   * Passa un componente personalizzato (es. YetiAvatar) per sostituirla.
+   */
+  icon?: ReactNode;
 }
 
 /**
@@ -33,7 +39,7 @@ interface AuthShellProps {
  *  - Card: relative z-10 -- sopra il canvas
  *  - Footer: relative z-10
  */
-export function AuthShell({ title, description, children }: AuthShellProps) {
+export function AuthShell({ title, description, children, icon }: AuthShellProps) {
   return (
     <div className="relative flex min-h-screen flex-col bg-background px-4">
       <GraphBackground />
@@ -55,7 +61,7 @@ export function AuthShell({ title, description, children }: AuthShellProps) {
         <Card className="w-full max-w-sm shadow-[0_0_50px_rgba(99,120,220,0.22)] ring-1 ring-white/5">
           <CardHeader className="space-y-3 text-center">
             <div className="flex justify-center">
-              <Network className="size-8 text-primary" aria-hidden="true" />
+              {icon ?? <Network className="size-8 text-primary" aria-hidden="true" />}
             </div>
             <div className="space-y-1">
               <CardTitle className="font-mono text-2xl">{title}</CardTitle>

@@ -1,4 +1,3 @@
-import { useEffect, useRef } from "react";
 import { LogOut, Network, UserRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link, Outlet } from "react-router-dom";
@@ -22,7 +21,11 @@ import { useProfile } from "@/features/profile/api/queries";
  *
  * Header -- link al profilo:
  *  Icona UserRound sempre visibile + nome (o email) come testo solo su lg+.
- *  In questo modo non c'e' duplicazione: un singolo elemento cliccabile.
+ *
+ * Lingua:
+ *  Il LanguageSwitcher controlla SOLO la lingua dell'interfaccia (i18n).
+ *  La lingua di output (riassunti, grafo, RAG) e' gestita separatamente
+ *  da profiles.preferred_language e non influenza i18n.
  *
  * Logout:
  *  signOut() aggiorna lo store Supabase -> ProtectedRoute rileva
@@ -30,25 +33,10 @@ import { useProfile } from "@/features/profile/api/queries";
  */
 export function AppShell() {
   const { user, signOut } = useAuth();
-  const { t, i18n } = useTranslation();
-  const { data: profile } = useProfile();
-
-  // Sincronizza la lingua al LOGIN: applica la preferenza salvata sul profilo
-  // la prima volta che il profilo diventa disponibile nella sessione corrente.
-  //
-  // Il ref impedisce che refetch successivi (window focus, navigazione) tornino
-  // a sovrascrivere una lingua cambiata dall'utente nella stessa sessione.
-  // Il ref si azzera al dismount (logout/remount): il prossimo login riapplica
-  // la preferenza salvata correttamente.
-  const didSyncLanguageRef = useRef(false);
-  useEffect(() => {
-    if (profile?.preferred_language && !didSyncLanguageRef.current) {
-      didSyncLanguageRef.current = true;
-      if (profile.preferred_language !== i18n.language) {
-        void i18n.changeLanguage(profile.preferred_language);
-      }
-    }
-  }, [profile?.preferred_language, i18n]);
+  const { t } = useTranslation();
+  // Il profilo viene caricato per le query che ne hanno bisogno (es. DocumentDetailPage).
+  // Non viene usato per sincronizzare la lingua UI: le due lingue sono indipendenti.
+  useProfile();
 
   // Recupera il nome da user_metadata (salvato al signup).
   // Se non disponibile, mostra l'email come fallback.

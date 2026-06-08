@@ -62,6 +62,8 @@ const en = {
 
   "auth.field.email": "Email",
   "auth.field.password": "Password",
+  "auth.password.show": "Show password",
+  "auth.password.hide": "Hide password",
 
   // ---------------------------------------------------------------------------
   // App shell / navigation
@@ -95,9 +97,9 @@ const en = {
   "profile.language.title": "Output language",
   "profile.language.subtitle":
     "Language used for summaries, knowledge graphs and question answers.",
-  "profile.language.it": "Italiano",
+  "profile.language.it": "Italian",
   "profile.language.en": "English",
-  "profile.language.success": "Language updated.",
+  "profile.language.success": "Output language updated.",
   "profile.language.error": "Unable to update language. Please try again.",
 
   "profile.delete.title": "Delete account",
@@ -116,13 +118,15 @@ const en = {
   // Documents — dashboard
   // ---------------------------------------------------------------------------
   "docs.title": "Your documents",
-  "docs.subtitle": "Upload texts or audio and turn them into knowledge graphs.",
+  "docs.subtitle": "Toss in your texts or audio and let us untangle the mess.",
+  "docs.languageHint":
+    "Customise the output language for summaries and graphs in your <link>profile settings</link>.",
   "docs.upload": "Upload document",
-  "docs.empty.title": "No documents yet",
-  "docs.empty.subtitle": 'Use "Upload document" to get started.',
+  "docs.empty.title": "No documents yet. What are you waiting for?",
+  "docs.empty.subtitle": 'Use "Upload document" to get the party started.',
   "docs.error": "Unable to load documents",
   "docs.searchPlaceholder": "Search by filename...",
-  "docs.searchEmpty": 'No documents found for "{{query}}".',
+  "docs.searchEmpty": 'Are you sure it\'s really called "{{query}}"? We didn\'t find anything!',
 
   // ---------------------------------------------------------------------------
   // Upload dialog
@@ -156,10 +160,22 @@ const en = {
   "graph.backendUnavailable": "The graph backend (Neo4j) is unavailable.",
   "graph.loadError": "Error loading the graph.",
   "graph.empty": "No nodes in the graph.",
+  "graph.qa.title": "Ask the graph",
+  "graph.qa.placeholder": "Ask a question about the document...",
+  "graph.qa.send": "Send",
+  "graph.qa.asking": "Thinking...",
+  "graph.qa.sources": "Sources",
+  "graph.qa.hint": "Answers are grounded only in this document's graph.",
+  "graph.qa.notReady": "The document is not ready for questions yet.",
+  "graph.qa.unavailable": "The Q&A service (Gemini) is currently unavailable.",
+  "graph.qa.error": "Error while generating the answer.",
 
   // ---------------------------------------------------------------------------
   // Documents — detail
   // ---------------------------------------------------------------------------
+  "doc.transcript": "Transcript",
+  "doc.transcript.chars": "characters",
+  "doc.transcript.lang": "language",
   "doc.back": "Documents",
   "doc.exploreGraph": "Explore graph",
   "doc.reExtract": "Re-extract graph",

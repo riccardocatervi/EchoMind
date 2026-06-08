@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { ArrowLeft, Loader2 } from "lucide-react";
+import { PasswordInput } from "@/shared/components/PasswordInput";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -53,8 +54,8 @@ export function ProfilePage() {
 
   return (
     <div className="space-y-6">
-      {/* Back link */}
-      <div className="flex items-center gap-2">
+      {/* Back link -- sticky: rimane visibile mentre si scrolla la pagina. */}
+      <div className="sticky top-14 z-10 -mx-1 rounded-md bg-background/90 px-1 py-1.5 backdrop-blur-sm">
         <Link
           to="/documents"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -64,18 +65,16 @@ export function ProfilePage() {
         </Link>
       </div>
 
-      {/* Saluto personalizzato */}
+      {/* Saluto personalizzato -- l'email corrente e' visibile nell'apposita card. */}
       <div>
         <h1 className="font-mono text-2xl font-semibold tracking-tight">
           {t("profile.greeting", { name: displayName })}
         </h1>
-        {user?.email && (
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t("profile.email.current")}: <span className="text-foreground">{user.email}</span>
-          </p>
-        )}
       </div>
 
+      {/* Tutte le card in un'unica griglia -- su xl a 3 colonne:            */}
+      {/* riga 1: Nome | Email | Password                                    */}
+      {/* riga 2: Lingua di output | Elimina account (affiancati e simmetrici) */}
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
         <NameSection
           initialFirstName={firstName}
@@ -84,10 +83,8 @@ export function ProfilePage() {
         <EmailSection />
         <PasswordSection />
         <LanguageSection />
+        <DeleteAccountSection />
       </div>
-
-      {/* Zona pericolo: eliminazione account */}
-      <DeleteAccountSection />
     </div>
   );
 }
@@ -182,6 +179,7 @@ function NameSection({
 /* -------------------------------------------------------------------------- */
 function EmailSection() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [newEmail, setNewEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -211,6 +209,12 @@ function EmailSection() {
     <Card className="shadow-[0_0_30px_rgba(99,120,220,0.15)] ring-1 ring-white/5">
       <CardHeader>
         <CardTitle className="text-base">{t("profile.email.title")}</CardTitle>
+        {user?.email && (
+          <CardDescription className="text-sm">
+            {t("profile.email.current")}:{" "}
+            <span className="font-medium text-foreground">{user.email}</span>
+          </CardDescription>
+        )}
       </CardHeader>
       <CardContent>
         <form
@@ -291,9 +295,8 @@ function PasswordSection() {
         >
           <div className="space-y-2">
             <Label htmlFor="new-password">{t("profile.password.new")}</Label>
-            <Input
+            <PasswordInput
               id="new-password"
-              type="password"
               autoComplete="new-password"
               minLength={6}
               value={newPassword}
@@ -303,9 +306,8 @@ function PasswordSection() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="confirm-password">{t("profile.password.confirm")}</Label>
-            <Input
+            <PasswordInput
               id="confirm-password"
-              type="password"
               autoComplete="new-password"
               minLength={6}
               value={confirm}
@@ -332,23 +334,22 @@ function PasswordSection() {
 /* Sezione lingua di output                                                    */
 /* -------------------------------------------------------------------------- */
 function LanguageSection() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { data: profile } = useProfile();
   const [submitting, setSubmitting] = useState(false);
 
-  // Lingua corrente: usa il profilo come fonte di verita' (se disponibile),
-  // altrimenti cade sul valore locale di i18n.
-  const current = (profile?.preferred_language ?? i18n.language) as SupportedLang;
+  // Fonte di verita': solo il profilo (lingua di OUTPUT, indipendente dalla UI).
+  // Default 'it' se il profilo non e' ancora caricato.
+  const current = (profile?.preferred_language ?? "it") as SupportedLang;
 
   async function handleSelect(lang: SupportedLang) {
     if (lang === current || submitting) return;
     setSubmitting(true);
     try {
       const updated = await updateMyProfile({ preferred_language: lang });
-      // Aggiorna la cache e la lingua locale in sincronia.
+      // Aggiorna solo la cache del profilo: la lingua di output NON cambia la UI.
       queryClient.setQueryData<ProfileRead>(profileKeys.me, updated);
-      void i18n.changeLanguage(lang);
       toast.success(t("profile.language.success"));
     } catch {
       toast.error(t("profile.language.error"));
@@ -361,7 +362,7 @@ function LanguageSection() {
     <Card className="shadow-[0_0_30px_rgba(99,120,220,0.15)] ring-1 ring-white/5">
       <CardHeader>
         <CardTitle className="text-base">{t("profile.language.title")}</CardTitle>
-        <CardDescription className="text-xs">{t("profile.language.subtitle")}</CardDescription>
+        <CardDescription className="text-sm">{t("profile.language.subtitle")}</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="flex gap-2">
@@ -421,7 +422,7 @@ function DeleteAccountSection() {
   }
 
   return (
-    <section aria-labelledby="delete-account-heading" className="mt-4">
+    <section aria-labelledby="delete-account-heading">
       {/*
        * Glow rosso: segnala la zona pericolo senza essere eccessivamente aggressivo.
        * `ring-red-500/20` + `shadow-[...rgba(239,68,68,...)]` = alone rosso tenue.
@@ -431,10 +432,9 @@ function DeleteAccountSection() {
           <CardTitle className="text-base text-destructive" id="delete-account-heading">
             {t("profile.delete.title")}
           </CardTitle>
+          <CardDescription className="text-sm">{t("profile.delete.warning")}</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">{t("profile.delete.warning")}</p>
-
+        <CardContent>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="destructive" size="sm" disabled={deleting}>

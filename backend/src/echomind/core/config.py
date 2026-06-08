@@ -330,6 +330,30 @@ class Settings(BaseSettings):
         description="Modello Gemini per gli embeddings. Source env: GEMINI_EMBEDDING_MODEL.",
     )
 
+    gemini_thinking_budget: int = Field(
+        default=-1,
+        ge=-1,
+        description=(
+            "Budget di 'thinking' (token di ragionamento interno) per le chiamate "
+            "generative Gemini 2.5+. -1 = DEFAULT: non inviamo il parametro, quindi vale "
+            "il comportamento nativo del modello (thinking dinamico ABILITATO su 2.5 Flash) "
+            "-- piu' qualita' sul ragionamento multi-step, a costo di latenza. 0 = thinking "
+            "DISATTIVATO: piu' veloce su task fattuali/strutturati, con possibile lieve calo "
+            "di qualita'. >0 = budget fisso di token. Source env: GEMINI_THINKING_BUDGET."
+        ),
+    )
+
+    gemini_max_retries: int = Field(
+        default=3,
+        ge=0,
+        description=(
+            "Tentativi extra per le singole chiamate Gemini su errori transienti (429 "
+            "rate-limit, 5xx), con backoff esponenziale DENTRO il thread. Evita che un 429 "
+            "isolato faccia fallire e ri-eseguire l'intero documento (importante con "
+            "l'estrazione in parallelo). Source env: GEMINI_MAX_RETRIES."
+        ),
+    )
+
     embedding_dimensions: int = Field(
         default=768,
         gt=0,
@@ -343,6 +367,17 @@ class Settings(BaseSettings):
         default=12000,
         gt=0,
         description="Dimensione massima (caratteri) di un chunk di testo passato all'LLM.",
+    )
+
+    extraction_max_concurrency: int = Field(
+        default=4,
+        gt=0,
+        description=(
+            "Numero massimo di chunk estratti IN PARALLELO (chiamate Gemini concorrenti). "
+            "I chunk sono indipendenti: parallelizzarli riduce drasticamente il tempo totale "
+            "su documenti lunghi. Valori troppo alti sul free tier aumentano i 429 (mitigati "
+            "da gemini_max_retries). 1 = sequenziale. Source env: EXTRACTION_MAX_CONCURRENCY."
+        ),
     )
 
     extraction_chunk_overlap_chars: int = Field(

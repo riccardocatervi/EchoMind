@@ -156,10 +156,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             client=_client,
             model=settings.gemini_embedding_model,
             dimensions=settings.embedding_dimensions,
+            max_retries=settings.gemini_max_retries,
         )
         app.state.rag_answerer = GeminiRagAnswerer(
             client=_client,
             model=settings.gemini_model,
+            thinking_budget=settings.gemini_thinking_budget,
+            max_retries=settings.gemini_max_retries,
         )
         log.info("rag_components_ready")
     except Exception as exc:

@@ -44,3 +44,4 @@ Scrivilo quando:
 | [0006](0006-media-processing.md) | Media processing: pipeline pura, Transcriber Protocol, errori retryable, trigger su confirm | Accepted |
 | [0007](0007-knowledge-extraction.md) | Knowledge extraction: GraphExtractor Protocol, Gemini, Neo4j multi-tenant, Louvain in-process, embeddings pgvector | Accepted |
 | [0008](0008-frontend-visualization.md) | Frontend: SPA feature-based, auth Supabase, TanStack Query + Zustand, zod, axios, React Flow + Elk | Accepted |
+| [0009](0009-graphrag-qa.md) | GraphRAG Q&A: retrieval ibrido pgvector+Neo4j, structured output con citazioni, RAG sincrono in-API, performance Gemini | Accepted |
