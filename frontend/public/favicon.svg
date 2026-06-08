@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <!-- Tile navy = --background dark del tema (hsl(222 47% 11%)) -->
+  <!-- Tile navy = sfondo dark del tema, hsl(222 47% 11%) -->
   <rect width="32" height="32" rx="7" fill="#0f172a" />
-  <!-- Icona "Network" di Lucide (stessa del brand in-app), in primary hsl(217 91% 60%). -->
+  <!-- Icona Network di Lucide (brand in-app), in primary hsl(217 91% 60%) -->
   <g
     transform="translate(4 4)"
     fill="none"

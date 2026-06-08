@@ -173,6 +173,18 @@ const it = {
   "graph.qa.notReady": "Il documento non è ancora pronto per le domande.",
   "graph.qa.unavailable": "Il servizio di Q&A (Gemini) non è al momento disponibile.",
   "graph.qa.error": "Errore durante la generazione della risposta.",
+  "graph.controls.searchPlaceholder": "Cerca nodo...",
+  "graph.controls.searchLabel": "Cerca nodo",
+  "graph.controls.clearSearch": "Pulisci ricerca",
+  "graph.controls.communities": "Community",
+  "graph.controls.community": "Community {{n}}",
+  "graph.details.close": "Chiudi pannello",
+  "graph.details.relations": "Relazioni ({{n}})",
+  "graph.details.goTo": "Vai a {{name}}",
+  "summary.title": "Riassunto",
+  "summary.stats.nodes": "{{n}} nodi",
+  "summary.stats.relationships": "{{n}} relazioni",
+  "summary.stats.communities": "{{n}} community",
 
   // ---------------------------------------------------------------------------
   // Documenti — dettaglio

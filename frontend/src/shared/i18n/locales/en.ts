@@ -126,7 +126,7 @@ const en = {
   "docs.empty.subtitle": 'Use "Upload document" to get the party started.',
   "docs.error": "Unable to load documents",
   "docs.searchPlaceholder": "Search by filename...",
-  "docs.searchEmpty": 'Are you sure it\'s really called "{{query}}"? We didn\'t find anything!',
+  "docs.searchEmpty": "Are you sure it's really called \"{{query}}\"? We didn't find anything!",
 
   // ---------------------------------------------------------------------------
   // Upload dialog
@@ -169,6 +169,18 @@ const en = {
   "graph.qa.notReady": "The document is not ready for questions yet.",
   "graph.qa.unavailable": "The Q&A service (Gemini) is currently unavailable.",
   "graph.qa.error": "Error while generating the answer.",
+  "graph.controls.searchPlaceholder": "Search node...",
+  "graph.controls.searchLabel": "Search node",
+  "graph.controls.clearSearch": "Clear search",
+  "graph.controls.communities": "Communities",
+  "graph.controls.community": "Community {{n}}",
+  "graph.details.close": "Close panel",
+  "graph.details.relations": "Relations ({{n}})",
+  "graph.details.goTo": "Go to {{name}}",
+  "summary.title": "Summary",
+  "summary.stats.nodes": "{{n}} nodes",
+  "summary.stats.relationships": "{{n}} relationships",
+  "summary.stats.communities": "{{n}} communities",
 
   // ---------------------------------------------------------------------------
   // Documents — detail

@@ -24,7 +24,6 @@ import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from itertools import batched
-from typing import TypeVar
 
 from google import genai
 from google.genai import errors as genai_errors
@@ -33,8 +32,6 @@ from google.genai import types
 from echomind.core.language import language_name
 from echomind.extraction.errors import EmbeddingError, LLMError
 from echomind.extraction.schema import ChunkGraph, DocumentSummary
-
-_T = TypeVar("_T")
 
 
 def _extraction_system_prompt(language: str) -> str:
@@ -92,7 +89,7 @@ def _thinking_config(budget: int) -> types.ThinkingConfig | None:
     return types.ThinkingConfig(thinking_budget=budget)
 
 
-def _call_with_retry(fn: Callable[[], _T], *, max_retries: int) -> _T:
+def _call_with_retry[T](fn: Callable[[], T], *, max_retries: int) -> T:
     """Esegue `fn` ritentando sugli errori transienti con backoff esponenziale.
 
     Pensata per girare DENTRO un thread (asyncio.to_thread / ThreadPoolExecutor):

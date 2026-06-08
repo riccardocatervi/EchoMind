@@ -1,11 +1,5 @@
 import { useState, type FormEvent, type KeyboardEvent } from "react";
-import {
-  AlertTriangle,
-  ChevronDown,
-  Loader2,
-  MessageCircleQuestion,
-  Send,
-} from "lucide-react";
+import { AlertTriangle, ChevronDown, Loader2, MessageCircleQuestion, Send } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { isApiError } from "@/shared/api/axios";
@@ -86,7 +80,9 @@ export function GraphQaPanel({ documentId }: { documentId: string }) {
               <p className="whitespace-pre-wrap text-sm leading-relaxed">{answer.answer}</p>
               {answer.citations.length > 0 && (
                 <div className="space-y-1 border-t pt-2">
-                  <p className="text-xs font-medium text-muted-foreground">{t("graph.qa.sources")}</p>
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {t("graph.qa.sources")}
+                  </p>
                   <div className="flex flex-wrap gap-1">
                     {answer.citations.map((citation) => (
                       <button

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Search, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Input } from "@/shared/components/ui/input";
 import { cn } from "@/shared/lib/utils";
@@ -9,6 +10,7 @@ import type { GraphRead } from "@/features/graph/schemas/graph";
 
 /** Pannello fluttuante: ricerca nodi + filtro community (legenda interattiva). */
 export function GraphControls({ graph }: { graph: GraphRead }) {
+  const { t } = useTranslation();
   const searchTerm = useGraphStore((state) => state.searchTerm);
   const setSearchTerm = useGraphStore((state) => state.setSearchTerm);
   const hiddenCommunities = useGraphStore((state) => state.hiddenCommunities);
@@ -33,15 +35,15 @@ export function GraphControls({ graph }: { graph: GraphRead }) {
         <Input
           value={searchTerm}
           onChange={(event) => setSearchTerm(event.target.value)}
-          placeholder="Cerca nodo..."
-          aria-label="Cerca nodo"
+          placeholder={t("graph.controls.searchPlaceholder")}
+          aria-label={t("graph.controls.searchLabel")}
           className="h-9 px-8"
         />
         {searchTerm && (
           <button
             type="button"
             onClick={() => setSearchTerm("")}
-            aria-label="Pulisci ricerca"
+            aria-label={t("graph.controls.clearSearch")}
             className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
           >
             <X className="size-4" />
@@ -51,7 +53,9 @@ export function GraphControls({ graph }: { graph: GraphRead }) {
 
       {communities.length > 0 && (
         <div>
-          <p className="mb-1 text-xs font-medium text-muted-foreground">Community</p>
+          <p className="mb-1 text-xs font-medium text-muted-foreground">
+            {t("graph.controls.communities")}
+          </p>
           <ul className="space-y-0.5">
             {communities.map(([community, count]) => {
               const hidden = hiddenCommunities.has(community);
@@ -71,7 +75,9 @@ export function GraphControls({ graph }: { graph: GraphRead }) {
                       style={{ backgroundColor: communityColor(community) }}
                       aria-hidden="true"
                     />
-                    <span className="flex-1">Community {community}</span>
+                    <span className="flex-1">
+                      {t("graph.controls.community", { n: community })}
+                    </span>
                     <span className="text-muted-foreground">{count}</span>
                   </button>
                 </li>

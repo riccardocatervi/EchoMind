@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/shared/components/ui/button";
 import { communityColor } from "@/features/graph/lib/communityColors";
@@ -22,6 +23,7 @@ export function NodeDetailsPanel({
   onClose: () => void;
   onSelectNode: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const nameById = new Map(graph.nodes.map((n) => [n.id, n.name]));
   const neighbors: Neighbor[] = graph.edges
     .filter((edge) => edge.source === node.id || edge.target === node.id)
@@ -48,7 +50,7 @@ export function NodeDetailsPanel({
           size="icon"
           className="size-7 shrink-0"
           onClick={onClose}
-          aria-label="Chiudi pannello"
+          aria-label={t("graph.details.close")}
         >
           <X aria-hidden="true" />
         </Button>
@@ -59,7 +61,7 @@ export function NodeDetailsPanel({
       {neighbors.length > 0 && (
         <div className="mt-3">
           <p className="mb-1 text-xs font-medium text-muted-foreground">
-            Relazioni ({neighbors.length})
+            {t("graph.details.relations", { n: neighbors.length })}
           </p>
           <ul className="space-y-0.5">
             {neighbors.map((neighbor, index) => (
@@ -68,7 +70,7 @@ export function NodeDetailsPanel({
                   type="button"
                   onClick={() => onSelectNode(neighbor.id)}
                   className="flex w-full cursor-pointer flex-wrap items-center gap-1 rounded px-1 py-1 text-left text-sm transition-colors hover:bg-accent"
-                  title={`Vai a ${neighbor.name}`}
+                  title={t("graph.details.goTo", { name: neighbor.name })}
                 >
                   <span className="text-muted-foreground">{neighbor.outgoing ? "->" : "<-"}</span>
                   <span className="rounded bg-muted px-1 text-xs">{neighbor.relation}</span>

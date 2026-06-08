@@ -104,7 +104,9 @@ export function YetiAvatar({
     if (!armL || !armR) return;
     gsap.set(armL, { x: -93, y: 220, rotation: 105, transformOrigin: "top left" });
     gsap.set(armR, { x: -93, y: 220, rotation: -105, transformOrigin: "top right" });
-    return () => { gsap.killTweensOf([armL, armR]); };
+    return () => {
+      gsap.killTweensOf([armL, armR]);
+    };
   }, []);
 
   /* ========================================================
@@ -204,13 +206,17 @@ export function YetiAvatar({
      ======================================================== */
   const resetFace = useCallback(() => {
     const all = [
-      eyeLRef.current, eyeRRef.current,
+      eyeLRef.current,
+      eyeRRef.current,
       noseRef.current,
       mouthGroupRef.current,
       chinRef.current,
-      faceRef.current, eyebrowRef.current,
-      outerEarLRef.current, outerEarRRef.current,
-      earHairLRef.current, earHairRRef.current,
+      faceRef.current,
+      eyebrowRef.current,
+      outerEarLRef.current,
+      outerEarRRef.current,
+      earHairLRef.current,
+      earHairRRef.current,
       hairRef.current,
     ].filter(Boolean);
 
@@ -218,9 +224,21 @@ export function YetiAvatar({
     gsap.to(noseRef.current, { duration: 1, x: 0, y: 0, scaleX: 1, scaleY: 1, ease: "expo.out" });
     gsap.to(mouthGroupRef.current, { duration: 1, x: 0, y: 0, rotation: 0, ease: "expo.out" });
     gsap.to(chinRef.current, { duration: 1, x: 0, y: 0, scaleY: 1, ease: "expo.out" });
-    gsap.to([faceRef.current, eyebrowRef.current], { duration: 1, x: 0, y: 0, skewX: 0, ease: "expo.out" });
+    gsap.to([faceRef.current, eyebrowRef.current], {
+      duration: 1,
+      x: 0,
+      y: 0,
+      skewX: 0,
+      ease: "expo.out",
+    });
     gsap.to(
-      [outerEarLRef.current, outerEarRRef.current, earHairLRef.current, earHairRRef.current, hairRef.current],
+      [
+        outerEarLRef.current,
+        outerEarRRef.current,
+        earHairLRef.current,
+        earHairRRef.current,
+        hairRef.current,
+      ],
       { duration: 1, x: 0, y: 0, scaleY: 1, ease: "expo.out" },
     );
     // Evita memory leak: non usiamo `all` nel cleanup (e' solo per chiarezza)
@@ -238,7 +256,10 @@ export function YetiAvatar({
       resetFace();
       setMouthState("small");
       gsap.to([eyeLRef.current, eyeRRef.current], {
-        duration: 1, scaleX: 1, scaleY: 1, ease: "expo.out",
+        duration: 1,
+        scaleX: 1,
+        scaleY: 1,
+        ease: "expo.out",
       });
       gsap.to(toothRef.current, { duration: 1, x: 0, y: 0, ease: "expo.out" });
       gsap.to(tongueRef.current, { duration: 1, x: 0, y: 0, ease: "expo.out" });
@@ -249,20 +270,33 @@ export function YetiAvatar({
     const value = emailValue;
     if (value.length === 0) {
       setMouthState("small");
-      gsap.to([eyeLRef.current, eyeRRef.current], { duration: 1, scaleX: 1, scaleY: 1, ease: "expo.out" });
+      gsap.to([eyeLRef.current, eyeRRef.current], {
+        duration: 1,
+        scaleX: 1,
+        scaleY: 1,
+        ease: "expo.out",
+      });
       gsap.to(toothRef.current, { duration: 1, x: 0, y: 0, ease: "expo.out" });
       gsap.to(tongueRef.current, { duration: 1, x: 0, y: 0, ease: "expo.out" });
     } else if (value.includes("@")) {
       setMouthState("large");
       gsap.to([eyeLRef.current, eyeRRef.current], {
-        duration: 1, scaleX: 0.65, scaleY: 0.65,
-        transformOrigin: "center center", ease: "expo.out",
+        duration: 1,
+        scaleX: 0.65,
+        scaleY: 0.65,
+        transformOrigin: "center center",
+        ease: "expo.out",
       });
       gsap.to(toothRef.current, { duration: 1, x: 3, y: -2, ease: "expo.out" });
       gsap.to(tongueRef.current, { duration: 1, y: 2, ease: "expo.out" });
     } else {
       setMouthState("medium");
-      gsap.to([eyeLRef.current, eyeRRef.current], { duration: 1, scaleX: 0.85, scaleY: 0.85, ease: "expo.out" });
+      gsap.to([eyeLRef.current, eyeRRef.current], {
+        duration: 1,
+        scaleX: 0.85,
+        scaleY: 0.85,
+        ease: "expo.out",
+      });
       gsap.to(toothRef.current, { duration: 1, x: 0, y: 0, ease: "expo.out" });
       gsap.to(tongueRef.current, { duration: 1, x: 0, y: 1, ease: "expo.out" });
     }
@@ -330,36 +364,63 @@ export function YetiAvatar({
     const eLY = Math.sin(eyeLAngle) * 10;
     const eRX = Math.cos(eyeRAngle) * 20;
     const eRY = Math.sin(eyeRAngle) * 10;
-    const nX  = Math.cos(noseAngle)  * 23;
-    const nY  = Math.sin(noseAngle)  * 10;
-    const mX  = Math.cos(mouthAngle) * 23;
-    const mY  = Math.sin(mouthAngle) * 10;
-    const mR  = Math.cos(mouthAngle) * 6; // gradi
-    const cX  = mX * 0.8;
-    const cY  = mY * 0.5;
-    let   cS  = 1 - (dFromC * 0.15) / 100;
-    if (cS > 1) { cS = 1 - (cS - 1); if (cS < 0.5) cS = 0.5; }
-    const fX  = mX * 0.3;
-    const fY  = mY * 0.4;
-    const fSk = Math.cos(mouthAngle) * 5;  // gradi
+    const nX = Math.cos(noseAngle) * 23;
+    const nY = Math.sin(noseAngle) * 10;
+    const mX = Math.cos(mouthAngle) * 23;
+    const mY = Math.sin(mouthAngle) * 10;
+    const mR = Math.cos(mouthAngle) * 6; // gradi
+    const cX = mX * 0.8;
+    const cY = mY * 0.5;
+    let cS = 1 - (dFromC * 0.15) / 100;
+    if (cS > 1) {
+      cS = 1 - (cS - 1);
+      if (cS < 0.5) cS = 0.5;
+    }
+    const fX = mX * 0.3;
+    const fY = mY * 0.4;
+    const fSk = Math.cos(mouthAngle) * 5; // gradi
     const eSk = Math.cos(mouthAngle) * 25; // gradi
     const eaX = Math.cos(mouthAngle) * 4;
     const eaY = Math.cos(mouthAngle) * 5;
-    const hX  = Math.cos(mouthAngle) * 6;
+    const hX = Math.cos(mouthAngle) * 6;
 
     const dur = { duration: 1, ease: "expo.out" };
 
     gsap.to(eyeLRef.current, { ...dur, x: -eLX, y: -eLY });
     gsap.to(eyeRRef.current, { ...dur, x: -eRX, y: -eRY });
-    gsap.to(noseRef.current, { ...dur, x: -nX, y: -nY, rotation: mR, transformOrigin: "center center" });
-    gsap.to(mouthGroupRef.current, { ...dur, x: -mX, y: -mY, rotation: mR, transformOrigin: "center center" });
+    gsap.to(noseRef.current, {
+      ...dur,
+      x: -nX,
+      y: -nY,
+      rotation: mR,
+      transformOrigin: "center center",
+    });
+    gsap.to(mouthGroupRef.current, {
+      ...dur,
+      x: -mX,
+      y: -mY,
+      rotation: mR,
+      transformOrigin: "center center",
+    });
     gsap.to(chinRef.current, { ...dur, x: -cX, y: -cY, scaleY: cS });
-    gsap.to(faceRef.current, { ...dur, x: -fX, y: -fY, skewX: -fSk, transformOrigin: "center top" });
-    gsap.to(eyebrowRef.current, { ...dur, x: -fX, y: -fY, skewX: -eSk, transformOrigin: "center top" });
-    gsap.to(outerEarLRef.current, { ...dur, x:  eaX, y: -eaY });
-    gsap.to(outerEarRRef.current, { ...dur, x:  eaX, y:  eaY });
-    gsap.to(earHairLRef.current,  { ...dur, x: -eaX, y: -eaY });
-    gsap.to(earHairRRef.current,  { ...dur, x: -eaX, y:  eaY });
+    gsap.to(faceRef.current, {
+      ...dur,
+      x: -fX,
+      y: -fY,
+      skewX: -fSk,
+      transformOrigin: "center top",
+    });
+    gsap.to(eyebrowRef.current, {
+      ...dur,
+      x: -fX,
+      y: -fY,
+      skewX: -eSk,
+      transformOrigin: "center top",
+    });
+    gsap.to(outerEarLRef.current, { ...dur, x: eaX, y: -eaY });
+    gsap.to(outerEarRRef.current, { ...dur, x: eaX, y: eaY });
+    gsap.to(earHairLRef.current, { ...dur, x: -eaX, y: -eaY });
+    gsap.to(earHairRRef.current, { ...dur, x: -eaX, y: eaY });
     gsap.to(hairRef.current, { ...dur, x: hX, scaleY: 1.2, transformOrigin: "center bottom" });
   }, [emailFocused, emailValue, emailInputRef, resetFace]);
 
