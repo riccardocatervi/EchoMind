@@ -5,9 +5,10 @@ Revises:
 Create Date: 2026-04-26
 
 Crea:
-  1. Schema `auth` + tabella `auth.users(id uuid)` SE NON ESISTE
+  1. Schema `auth` + tabella `auth.users(id uuid)` SOLO se non esiste già
      - In dev locale: lo creiamo noi (Supabase non c'è)
-     - In Supabase prod: esiste già → IF NOT EXISTS è no-op
+     - In Supabase prod: esiste già → lo rileviamo con to_regclass() e saltiamo
+       (il ruolo non ha privilegi di CREATE sullo schema auth)
   2. Tabella `public.profiles` con FK 1:1 a `auth.users.id`
   3. Funzione + trigger per auto-update di `updated_at`
   4. Row-Level Security su `profiles` con 2 policy:
@@ -31,14 +32,25 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # -------------------------------------------------------------------------
-    # 1. Schema `auth` + tabella `users` (idempotente per Supabase compat)
+    # 1. Schema `auth` + tabella `users` (solo in dev; in Supabase esistono già)
     # -------------------------------------------------------------------------
-    # NB: in Supabase prod questo è no-op (lo schema/tabella esistono già).
-    # In dev locale lo creiamo noi così la FK di profiles.id può puntarlo.
-    op.execute("CREATE SCHEMA IF NOT EXISTS auth")
-    op.execute(
-        "CREATE TABLE IF NOT EXISTS auth.users (  id uuid PRIMARY KEY DEFAULT gen_random_uuid())"
-    )
+    # In Supabase prod lo schema `auth` e la tabella `auth.users` sono gestiti
+    # da Supabase Auth e il ruolo applicativo NON ha il privilegio di crearci
+    # tabelle. Attenzione: `CREATE TABLE IF NOT EXISTS` NON basta, perché
+    # PostgreSQL verifica il privilegio CREATE sullo schema PRIMA di valutare
+    # `IF NOT EXISTS` → su Supabase fallirebbe comunque con "permission denied
+    # for schema auth". Per questo controlliamo prima l'esistenza con
+    # `to_regclass()` (che non richiede privilegi di scrittura) ed emettiamo i
+    # CREATE solo quando la tabella manca davvero — cioè nel Postgres locale.
+    bind = op.get_bind()
+    auth_users_exists = bind.execute(
+        sa.text("SELECT to_regclass('auth.users') IS NOT NULL")
+    ).scalar()
+    if not auth_users_exists:
+        op.execute("CREATE SCHEMA IF NOT EXISTS auth")
+        op.execute(
+            "CREATE TABLE auth.users (id uuid PRIMARY KEY DEFAULT gen_random_uuid())"
+        )
 
     # -------------------------------------------------------------------------
     # 2. Tabella public.profiles
