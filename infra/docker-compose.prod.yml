@@ -70,7 +70,7 @@ services:
     image: echomind-backend:latest
     restart: unless-stopped
     env_file:
-      - ../.env
+      - ../.env.production
     environment:
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672//
       REDIS_URL: redis://redis:6379/0
