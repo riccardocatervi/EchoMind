@@ -69,6 +69,20 @@ class Profile(Base):
     )
 
     # -------------------------------------------------------------------------
+    # Preferenza di lingua per l'output generato (M8)
+    # -------------------------------------------------------------------------
+    # Summary, descrizioni del grafo e risposte del Q&A seguono QUESTA lingua
+    # (scelta dall'utente nell'interfaccia), non la lingua del documento. Il
+    # worker di estrazione la legge da qui (non puo' leggere la UI). NOT NULL
+    # con default 'it' (vedi migration 0007).
+    preferred_language: Mapped[str] = mapped_column(
+        String(8),
+        nullable=False,
+        server_default=text("'it'"),
+        comment="Lingua di output preferita (it/en): summary, grafo, risposte RAG.",
+    )
+
+    # -------------------------------------------------------------------------
     # Audit timestamp (server-side defaults)
     # -------------------------------------------------------------------------
     # TIMESTAMP(timezone=True) --> "TIMESTAMPTZ" in Postgres (raccomandato).

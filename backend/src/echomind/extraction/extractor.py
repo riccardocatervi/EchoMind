@@ -17,6 +17,10 @@ from echomind.extraction.schema import ChunkGraph
 
 
 class GraphExtractor(Protocol):
-    """Estrae il grafo (entita' + relazioni) da un singolo chunk di testo."""
+    """Estrae il grafo (entita' + relazioni) da un singolo chunk di testo.
 
-    def extract(self, text: str) -> ChunkGraph: ...
+    `language` e' la lingua di OUTPUT (codice it/en): nomi e descrizioni vengono
+    scritti in quella lingua a prescindere dalla lingua del documento.
+    """
+
+    def extract(self, text: str, *, language: str) -> ChunkGraph: ...

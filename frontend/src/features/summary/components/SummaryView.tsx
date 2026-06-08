@@ -1,4 +1,5 @@
 import { ListTree, Network, Share2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import {
   Accordion,
@@ -16,6 +17,7 @@ function metaNumber(meta: Record<string, unknown>, key: string): number | null {
 }
 
 export function SummaryView({ summary }: { summary: SummaryRead }) {
+  const { t } = useTranslation();
   const nodes = metaNumber(summary.meta, "node_count");
   const relationships = metaNumber(summary.meta, "relationship_count");
   const communities = metaNumber(summary.meta, "community_count");
@@ -24,25 +26,25 @@ export function SummaryView({ summary }: { summary: SummaryRead }) {
   return (
     <Card className="shadow-[0_0_30px_rgba(99,120,220,0.15)] ring-1 ring-white/5">
       <CardHeader>
-        <CardTitle className="text-base">Riassunto</CardTitle>
+        <CardTitle className="text-base">{t("summary.title")}</CardTitle>
         {hasStats && (
           <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
             {nodes !== null && (
               <span className="inline-flex items-center gap-1">
                 <Network className="size-3.5" aria-hidden="true" />
-                {nodes} nodi
+                {t("summary.stats.nodes", { n: nodes })}
               </span>
             )}
             {relationships !== null && (
               <span className="inline-flex items-center gap-1">
                 <Share2 className="size-3.5" aria-hidden="true" />
-                {relationships} relazioni
+                {t("summary.stats.relationships", { n: relationships })}
               </span>
             )}
             {communities !== null && (
               <span className="inline-flex items-center gap-1">
                 <ListTree className="size-3.5" aria-hidden="true" />
-                {communities} community
+                {t("summary.stats.communities", { n: communities })}
               </span>
             )}
           </div>

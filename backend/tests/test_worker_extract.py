@@ -69,6 +69,16 @@ class _FakeGraphStore:
     async def get_document_graph(self, *, owner_id: UUID, document_id: UUID) -> GraphData:
         return GraphData(entities=[], relations=[])
 
+    async def get_neighborhood(
+        self,
+        *,
+        owner_id: UUID,
+        document_id: UUID,
+        entity_ids: Sequence[Any],
+        hops: int = 1,
+    ) -> GraphData:
+        return GraphData(entities=[], relations=[])
+
     async def delete_document_graph(self, *, owner_id: UUID, document_id: UUID) -> None: ...
 
     async def delete_owner_graph(self, *, owner_id: UUID) -> None: ...
@@ -77,8 +87,10 @@ class _FakeGraphStore:
 class _FakeExtractor:
     def __init__(self, *, exc: Exception | None = None) -> None:
         self._exc = exc
+        self.languages: list[str] = []  # registra la lingua ricevuta a ogni chunk
 
-    def extract(self, text: str) -> ChunkGraph:
+    def extract(self, text: str, *, language: str) -> ChunkGraph:
+        self.languages.append(language)
         if self._exc is not None:
             raise self._exc
         return ChunkGraph(
@@ -96,7 +108,11 @@ class _FakeEmbedder:
 
 
 class _FakeSummarizer:
-    def summarize(self, chunks: Sequence[str]) -> DocumentSummary:
+    def __init__(self) -> None:
+        self.languages: list[str] = []  # registra la lingua ricevuta
+
+    def summarize(self, chunks: Sequence[str], *, language: str) -> DocumentSummary:
+        self.languages.append(language)
         return DocumentSummary(
             overview="panoramica", sections=[SummarySection(title="Tema", content="dettaglio")]
         )
@@ -136,8 +152,17 @@ async def _seed_transcript(session: AsyncSession, *, owner_id: UUID, document_id
     )
 
 
-async def _seed_extract_task(session: AsyncSession, *, owner_id: UUID, document_id: UUID) -> UUID:
+async def _seed_extract_task(
+    session: AsyncSession,
+    *,
+    owner_id: UUID,
+    document_id: UUID,
+    language: str | None = None,
+) -> UUID:
     task_id = uuid4()
+    payload: dict[str, Any] = {"document_id": str(document_id)}
+    if language is not None:
+        payload["language"] = language
     await session.execute(
         text(
             "INSERT INTO public.tasks (id, owner_id, task_type, status, payload) "
@@ -146,7 +171,7 @@ async def _seed_extract_task(session: AsyncSession, *, owner_id: UUID, document_
         {
             "id": str(task_id),
             "owner": str(owner_id),
-            "payload": json.dumps({"document_id": str(document_id)}),
+            "payload": json.dumps(payload),
         },
     )
     return task_id
@@ -182,7 +207,11 @@ async def _embedding_count(session: AsyncSession, document_id: UUID) -> int:
 
 
 async def _full_seed(
-    session: AsyncSession, seed_auth_user: Any, *, with_transcript: bool = True
+    session: AsyncSession,
+    seed_auth_user: Any,
+    *,
+    with_transcript: bool = True,
+    language: str | None = None,
 ) -> tuple[UUID, UUID, UUID]:
     owner_id = uuid4()
     await seed_auth_user(owner_id)
@@ -190,7 +219,9 @@ async def _full_seed(
     doc_id = await _seed_document(session, owner_id=owner_id)
     if with_transcript:
         await _seed_transcript(session, owner_id=owner_id, document_id=doc_id)
-    task_id = await _seed_extract_task(session, owner_id=owner_id, document_id=doc_id)
+    task_id = await _seed_extract_task(
+        session, owner_id=owner_id, document_id=doc_id, language=language
+    )
     await session.commit()
     return owner_id, doc_id, task_id
 
@@ -405,3 +436,60 @@ async def test_missing_task_is_already_done(
         dedup_threshold=0.85,
     )
     assert outcome.kind == "already_done"
+
+
+async def test_run_extract_uses_language_from_payload(
+    system_session: AsyncSession,
+    db_session_maker: async_sessionmaker[AsyncSession],
+    seed_auth_user: Any,
+) -> None:
+    """La lingua nel payload del task arriva intatta a extractor e summarizer."""
+    _, _, task_id = await _full_seed(system_session, seed_auth_user, language="en")
+    extractor = _FakeExtractor()
+    summarizer = _FakeSummarizer()
+
+    outcome = await run_extract(
+        task_id=task_id,
+        attempt=0,
+        is_last_attempt=False,
+        session_maker=db_session_maker,
+        graph_store=_FakeGraphStore(),
+        extractor=extractor,
+        embedder=_FakeEmbedder(),
+        summarizer=summarizer,
+        max_chunk_chars=10_000,
+        chunk_overlap_chars=0,
+        dedup_threshold=0.85,
+    )
+
+    assert outcome.kind == "succeeded"
+    assert extractor.languages and all(lang == "en" for lang in extractor.languages)
+    assert summarizer.languages == ["en"]
+
+
+async def test_run_extract_defaults_to_italian_when_language_absent(
+    system_session: AsyncSession,
+    db_session_maker: async_sessionmaker[AsyncSession],
+    seed_auth_user: Any,
+) -> None:
+    """Payload senza 'language' --> fallback all'italiano (DEFAULT_LANGUAGE)."""
+    # language=None --> _seed_extract_task non include la chiave nel payload
+    _, _, task_id = await _full_seed(system_session, seed_auth_user, language=None)
+    summarizer = _FakeSummarizer()
+
+    outcome = await run_extract(
+        task_id=task_id,
+        attempt=0,
+        is_last_attempt=False,
+        session_maker=db_session_maker,
+        graph_store=_FakeGraphStore(),
+        extractor=_FakeExtractor(),
+        embedder=_FakeEmbedder(),
+        summarizer=summarizer,
+        max_chunk_chars=10_000,
+        chunk_overlap_chars=0,
+        dedup_threshold=0.85,
+    )
+
+    assert outcome.kind == "succeeded"
+    assert summarizer.languages == ["it"]

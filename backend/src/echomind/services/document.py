@@ -27,6 +27,7 @@ from uuid import UUID
 
 import magic
 
+from echomind.core.language import DEFAULT_LANGUAGE
 from echomind.core.logging import get_logger
 from echomind.db.models import Document, Task
 from echomind.db.repositories import DocumentRepository, TranscriptRepository
@@ -275,12 +276,17 @@ class DocumentService:
     # -------------------------------------------------------------------------
     # trigger_extraction (M5): avvio manuale / re-run dell'estrazione del grafo
     # -------------------------------------------------------------------------
-    async def trigger_extraction(self, *, owner_id: UUID, document_id: UUID) -> Task:
+    async def trigger_extraction(
+        self, *, owner_id: UUID, document_id: UUID, language: str = DEFAULT_LANGUAGE
+    ) -> Task:
         """Accoda l'estrazione del grafo per un documento gia' trascritto.
 
         Trigger manuale (l'auto-concatenazione avviene nel worker dopo la
         trascrizione). Richiede un transcript pronto, altrimenti 409. Stessa
         transazione della request: enqueue fallito --> rollback --> niente riga orfana.
+
+        `language` (it/en): lingua di output per grafo e riassunto. Il chiamante
+        (handler API) risolve la preferenza del profilo utente e la passa qui.
 
         Raises:
             DocumentNotFoundError: documento inesistente o non tuo (RLS). --> 404.
@@ -295,7 +301,9 @@ class DocumentService:
             raise ExtractionNotReadyError(
                 f"Document {document_id} non ha ancora un transcript: trascrizione non completata"
             )
-        return await self._task_service.enqueue_extract(owner_id=owner_id, document_id=document_id)
+        return await self._task_service.enqueue_extract(
+            owner_id=owner_id, document_id=document_id, language=language
+        )
 
     # -------------------------------------------------------------------------
     # READ

@@ -28,6 +28,7 @@ from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
+from echomind.core.language import DEFAULT_LANGUAGE
 from echomind.core.logging import get_logger
 from echomind.db.models import Task, TaskType
 from echomind.db.repositories import TaskRepository
@@ -147,17 +148,20 @@ class TaskService:
         )
         return task
 
-    async def enqueue_extract(self, *, owner_id: UUID, document_id: UUID) -> Task:
+    async def enqueue_extract(
+        self, *, owner_id: UUID, document_id: UUID, language: str = DEFAULT_LANGUAGE
+    ) -> Task:
         """Crea la riga (status=queued, type=extract) e accoda il task sul broker.
 
-        Il payload porta il document_id: il worker carica il transcript di quel
-        documento (sorgente di verita') e ne estrae il grafo. task_id Celery == id riga.
+        Il payload porta il document_id e la lingua di output scelta dall'utente
+        (codice it/en, default italiano). Il worker legge `language` dal payload e
+        lo propaga a `extract_knowledge`. task_id Celery == id riga.
 
         Raises:
             TaskEnqueueError: se l'enqueue sul broker fallisce. La transazione del
             chiamante fara' rollback, quindi la riga non resta orfana.
         """
-        payload: dict[str, Any] = {"document_id": str(document_id)}
+        payload: dict[str, Any] = {"document_id": str(document_id), "language": language}
         task = await self._repository.create(
             owner_id=owner_id,
             task_type=TaskType.EXTRACT.value,

@@ -1,17 +1,19 @@
-"""Endpoint /documents — gestione del lifecycle di upload utente.
+"""Endpoint /documents -- gestione del lifecycle di upload utente + Q&A RAG.
 
-5 endpoint:
-- POST   /api/v1/documents                   → init upload (genera presigned URL)
-- POST   /api/v1/documents/{id}/confirm      → conferma upload + valida MIME
-- GET    /api/v1/documents                   → lista paginata (RLS-filtered)
-- GET    /api/v1/documents/{id}              → dettaglio
-- DELETE /api/v1/documents/{id}              → hard delete (B2 + DB)
+6 endpoint:
+- POST   /api/v1/documents                     --> init upload (genera presigned URL)
+- POST   /api/v1/documents/{id}/confirm        --> conferma upload + valida MIME
+- GET    /api/v1/documents                     --> lista paginata (RLS-filtered)
+- GET    /api/v1/documents/{id}                --> dettaglio
+- DELETE /api/v1/documents/{id}                --> hard delete (B2 + DB)
+- POST   /api/v1/documents/{id}/ask            --> Q&A per-documento (GraphRAG, M8)
 
 Tutta la business logic vive nei layer service/repository.
 Qui solo:
 - Validazione body via Pydantic schemas
-- Mapping HTTP query params → service args
-- Conversione Document ORM → DocumentRead schema
+- Mapping HTTP query params --> service args
+- Conversione Document ORM --> DocumentRead schema
+- Helper `_clamp_language`: Accept-Language --> "it" | "en"
 """
 
 from __future__ import annotations
@@ -19,11 +21,13 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Header, Query, status
 
 from echomind.api.deps import (
     DocumentServiceDep,
     GraphServiceDep,
+    ProfileServiceDep,
+    RagServiceDep,
     SummaryServiceDep,
     TranscriptServiceDep,
     UserIdDep,
@@ -34,9 +38,33 @@ from echomind.schemas.document import (
     DocumentRead,
 )
 from echomind.schemas.graph import GraphEdge, GraphNode, GraphRead
+from echomind.schemas.rag import AskRequest, AskResponse, CitationRead
 from echomind.schemas.summary import SummaryRead
 from echomind.schemas.task import TaskEnqueuedResponse
 from echomind.schemas.transcript import TranscriptRead
+
+# -----------------------------------------------------------------------------
+# Helper: lingua dalla request
+# -----------------------------------------------------------------------------
+_SUPPORTED_LANGUAGES: frozenset[str] = frozenset({"it", "en"})
+_DEFAULT_LANGUAGE: str = "it"
+
+
+def _clamp_language(accept_language: str | None) -> str:
+    """Estrae il codice lingua dall'header Accept-Language e lo clamp a {it, en}.
+
+    Esempi:
+        "it-IT,it;q=0.9,en-US;q=0.8" --> "it"
+        "en-US,en;q=0.9"             --> "en"
+        "fr-FR,fr;q=0.9"             --> "it"  (non supportato, default)
+        None                         --> "it"  (default)
+    """
+    if not accept_language:
+        return _DEFAULT_LANGUAGE
+    first_tag = accept_language.split(",")[0].strip()  # "it-IT"
+    lang_code = first_tag.split(";")[0].strip().split("-")[0].lower()  # "it"
+    return lang_code if lang_code in _SUPPORTED_LANGUAGES else _DEFAULT_LANGUAGE
+
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -201,8 +229,16 @@ async def trigger_extraction(
     user_id: UserIdDep,
     document_id: UUID,
     service: DocumentServiceDep,
+    profile_service: ProfileServiceDep,
 ) -> TaskEnqueuedResponse:
-    task = await service.trigger_extraction(owner_id=user_id, document_id=document_id)
+    # Risolve la lingua di output dal profilo utente: il worker la usa
+    # per decidere in quale lingua produrre grafo e riassunto.
+    profile = await profile_service.get_or_create(user_id)
+    task = await service.trigger_extraction(
+        owner_id=user_id,
+        document_id=document_id,
+        language=profile.preferred_language,
+    )
     return TaskEnqueuedResponse(task_id=task.id, status=task.status)
 
 
@@ -303,3 +339,61 @@ async def delete_document(
     service: DocumentServiceDep,
 ) -> None:
     await service.delete_document(document_id=document_id)
+
+
+# -----------------------------------------------------------------------------
+# Q&A per-documento (GraphRAG, M8)
+# -----------------------------------------------------------------------------
+@router.post(
+    "/{document_id}/ask",
+    response_model=AskResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Pone una domanda sul documento (GraphRAG)",
+    description=(
+        "Genera una risposta in linguaggio naturale usando il knowledge graph del documento. "
+        "La risposta cita esplicitamente le entita' del grafo usate come fonte. "
+        "La lingua della risposta segue l'header `Accept-Language` (it/en, default it). "
+        "Il documento deve essere nello stato `completed` (estrazione terminata): "
+        "se non e' pronto o non appartiene all'utente, ritorna 404. "
+        "Se il backend RAG (Gemini) non e' configurato, ritorna 503."
+    ),
+    responses={
+        200: {"description": "Risposta con citazioni"},
+        401: {"description": "Token mancante, invalido o scaduto"},
+        404: {"description": "Documento non trovato, non tuo, o non ancora completato"},
+        422: {"description": "Domanda non valida o rifiutata dal backend LLM"},
+        503: {
+            "description": "Backend RAG (Gemini) non configurato o temporaneamente non disponibile"
+        },
+    },
+)
+async def ask_document(
+    document_id: UUID,
+    body: AskRequest,
+    rag_service: RagServiceDep,
+    user_id: UserIdDep,
+    accept_language: Annotated[
+        str | None,
+        Header(
+            alias="Accept-Language",
+            description=(
+                "Lingua della risposta RAG. Supportate: 'it' (italiano), 'en' (inglese). "
+                "Tag non supportati vengono ignorati e il default 'it' viene usato."
+            ),
+        ),
+    ] = None,
+) -> AskResponse:
+    """Risponde a una domanda sul documento usando il knowledge graph (GraphRAG)."""
+    language = _clamp_language(accept_language)
+    result = await rag_service.ask(
+        owner_id=user_id,
+        document_id=document_id,
+        question=body.question,
+        language=language,
+    )
+    return AskResponse(
+        answer=result.answer,
+        citations=[
+            CitationRead(entity_id=c.entity_id, name=c.name, type=c.type) for c in result.citations
+        ],
+    )

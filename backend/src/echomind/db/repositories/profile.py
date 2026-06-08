@@ -72,3 +72,14 @@ class ProfileRepository:
         await self._session.flush()
         await self._session.refresh(profile)
         return profile
+
+    async def update_preferred_language(self, profile: Profile, language: str) -> Profile:
+        """Aggiorna la lingua di output preferita su un profile in sessione.
+
+        Il chiamante (service/schema) ha gia' validato `language` contro le
+        lingue supportate. Il trigger `profiles_updated_at` tocca updated_at.
+        """
+        profile.preferred_language = language
+        await self._session.flush()
+        await self._session.refresh(profile)
+        return profile

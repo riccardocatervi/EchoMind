@@ -151,7 +151,13 @@ def _get_genai_client() -> genai.Client:
 
 def get_worker_extractor() -> GeminiGraphExtractor:
     """Estrattore di grafo Gemini (wrapper leggero sul client condiviso)."""
-    return GeminiGraphExtractor(client=_get_genai_client(), model=get_settings().gemini_model)
+    settings = get_settings()
+    return GeminiGraphExtractor(
+        client=_get_genai_client(),
+        model=settings.gemini_model,
+        thinking_budget=settings.gemini_thinking_budget,
+        max_retries=settings.gemini_max_retries,
+    )
 
 
 def get_worker_embedder() -> GeminiEmbedder:
@@ -161,12 +167,20 @@ def get_worker_embedder() -> GeminiEmbedder:
         client=_get_genai_client(),
         model=settings.gemini_embedding_model,
         dimensions=settings.embedding_dimensions,
+        max_retries=settings.gemini_max_retries,
     )
 
 
 def get_worker_summarizer() -> GeminiSummarizer:
-    """Summarizer Gemini (map-reduce sui chunk)."""
-    return GeminiSummarizer(client=_get_genai_client(), model=get_settings().gemini_model)
+    """Summarizer Gemini (map-reduce sui chunk, fase map in parallelo)."""
+    settings = get_settings()
+    return GeminiSummarizer(
+        client=_get_genai_client(),
+        model=settings.gemini_model,
+        thinking_budget=settings.gemini_thinking_budget,
+        max_retries=settings.gemini_max_retries,
+        max_concurrency=settings.extraction_max_concurrency,
+    )
 
 
 def get_worker_graph_store() -> Neo4jGraphStore:

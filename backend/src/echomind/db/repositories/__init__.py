@@ -11,7 +11,7 @@ Niente import di FastAPI, Pydantic schemas o services qui: il repository
 """
 
 from echomind.db.repositories.document import DocumentRepository
-from echomind.db.repositories.embedding import EmbeddingRepository, EmbeddingValue
+from echomind.db.repositories.embedding import EmbeddingRepository, EmbeddingValue, SimilarEntity
 from echomind.db.repositories.profile import ProfileRepository
 from echomind.db.repositories.summary import SummaryRepository
 from echomind.db.repositories.task import TaskRepository
@@ -22,6 +22,7 @@ __all__ = [
     "EmbeddingRepository",
     "EmbeddingValue",
     "ProfileRepository",
+    "SimilarEntity",
     "SummaryRepository",
     "TaskRepository",
     "TranscriptRepository",

@@ -185,12 +185,12 @@ class TestEnqueueExtract:
 
         result = await service.enqueue_extract(owner_id=owner_id, document_id=document_id)
 
-        # 1. INSERT con task_type='extract' e payload col document_id
+        # 1. INSERT con task_type='extract' e payload col document_id + lingua default
         mock_repo.create.assert_awaited_once()
         kwargs = mock_repo.create.call_args.kwargs
         assert kwargs["owner_id"] == owner_id
         assert kwargs["task_type"] == "extract"
-        assert kwargs["payload"] == {"document_id": str(document_id)}
+        assert kwargs["payload"] == {"document_id": str(document_id), "language": "it"}
 
         # 2. Enqueue: solo task_id come arg (il document_id vive nella riga DB)
         assert len(captured_enqueues) == 1

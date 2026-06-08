@@ -65,6 +65,8 @@ const it = {
 
   "auth.field.email": "Email",
   "auth.field.password": "Password",
+  "auth.password.show": "Mostra password",
+  "auth.password.hide": "Nascondi password",
 
   // ---------------------------------------------------------------------------
   // App shell / navigazione
@@ -96,6 +98,14 @@ const it = {
   "profile.password.submit": "Aggiorna password",
   "profile.password.success": "Password aggiornata con successo.",
   "profile.password.mismatch": "Le password non corrispondono.",
+  "profile.language.title": "Lingua di output",
+  "profile.language.subtitle":
+    "Lingua usata per riassunti, grafi di conoscenza e risposte alle domande.",
+  "profile.language.it": "Italiano",
+  "profile.language.en": "Inglese",
+  "profile.language.success": "Lingua di output aggiornata.",
+  "profile.language.error": "Impossibile aggiornare la lingua. Riprova.",
+
   "profile.delete.title": "Elimina account",
   "profile.delete.warning":
     "Tutti i tuoi documenti, trascrizioni, riassunti e grafi di conoscenza verranno eliminati definitivamente insieme all'account. Questa operazione è irreversibile.",
@@ -112,13 +122,15 @@ const it = {
   // Documenti — dashboard
   // ---------------------------------------------------------------------------
   "docs.title": "I tuoi documenti",
-  "docs.subtitle": "Carica testi o audio e trasformali in grafi di conoscenza.",
+  "docs.subtitle": "Butta dentro testi o audio e lasciaci sbrogliare la matassa.",
+  "docs.languageHint":
+    "Personalizza la lingua di riassunti e grafi nelle <link>impostazioni del profilo</link>.",
   "docs.upload": "Carica documento",
-  "docs.empty.title": "Non hai ancora documenti",
-  "docs.empty.subtitle": 'Usa "Carica documento" per iniziare.',
+  "docs.empty.title": "Ancora nessun documento. Cosa stai aspettando?",
+  "docs.empty.subtitle": 'Usa "Carica documento" per dare inizio alle danze.',
   "docs.error": "Impossibile caricare i documenti",
   "docs.searchPlaceholder": "Cerca per nome file...",
-  "docs.searchEmpty": 'Nessun documento trovato per "{{query}}".',
+  "docs.searchEmpty": 'Sei sicuro che si chiami proprio "{{query}}"? Non abbiamo trovato nulla!',
 
   // ---------------------------------------------------------------------------
   // Upload dialog
@@ -152,10 +164,34 @@ const it = {
   "graph.backendUnavailable": "Il backend del grafo (Neo4j) non è raggiungibile.",
   "graph.loadError": "Errore nel caricamento del grafo.",
   "graph.empty": "Nessun nodo nel grafo.",
+  "graph.qa.title": "Chiedi al grafo",
+  "graph.qa.placeholder": "Fai una domanda sul documento...",
+  "graph.qa.send": "Invia",
+  "graph.qa.asking": "Sto pensando...",
+  "graph.qa.sources": "Fonti",
+  "graph.qa.hint": "Le risposte si basano solo sul grafo di questo documento.",
+  "graph.qa.notReady": "Il documento non è ancora pronto per le domande.",
+  "graph.qa.unavailable": "Il servizio di Q&A (Gemini) non è al momento disponibile.",
+  "graph.qa.error": "Errore durante la generazione della risposta.",
+  "graph.controls.searchPlaceholder": "Cerca nodo...",
+  "graph.controls.searchLabel": "Cerca nodo",
+  "graph.controls.clearSearch": "Pulisci ricerca",
+  "graph.controls.communities": "Community",
+  "graph.controls.community": "Community {{n}}",
+  "graph.details.close": "Chiudi pannello",
+  "graph.details.relations": "Relazioni ({{n}})",
+  "graph.details.goTo": "Vai a {{name}}",
+  "summary.title": "Riassunto",
+  "summary.stats.nodes": "{{n}} nodi",
+  "summary.stats.relationships": "{{n}} relazioni",
+  "summary.stats.communities": "{{n}} community",
 
   // ---------------------------------------------------------------------------
   // Documenti — dettaglio
   // ---------------------------------------------------------------------------
+  "doc.transcript": "Trascrizione",
+  "doc.transcript.chars": "caratteri",
+  "doc.transcript.lang": "lingua",
   "doc.back": "Documenti",
   "doc.exploreGraph": "Esplora il grafo",
   "doc.reExtract": "Ri-estrai grafo",

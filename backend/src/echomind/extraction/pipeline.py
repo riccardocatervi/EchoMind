@@ -9,10 +9,12 @@ UN solo `asyncio.to_thread`, poi persiste il risultato.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
 
+from echomind.core.language import DEFAULT_LANGUAGE
 from echomind.extraction.chunking import chunk_text
 from echomind.extraction.community import detect_communities
 from echomind.extraction.dedup import (
@@ -61,20 +63,35 @@ def extract_knowledge(
     max_chunk_chars: int,
     chunk_overlap_chars: int,
     dedup_threshold: float,
+    language: str = DEFAULT_LANGUAGE,
+    max_concurrency: int = 1,
 ) -> ExtractionResult:
     """Trasforma un testo (transcript) in grafo + riassunto + embeddings.
 
     Deterministico a parita' di input + adapter. Tollerante al vuoto: testo o
     estrazione vuoti producono un risultato vuoto coerente (0 nodi/archi), non un
     errore -- la decisione su cosa farne spetta al worker.
+
+    `language` (codice it/en) e' la lingua di OUTPUT: nomi/descrizioni del grafo e
+    il riassunto vengono prodotti in quella lingua, NON nella lingua del documento.
+    Default difensivo a italiano; il worker passa la preferenza dell'utente (CP3).
     """
     chunks = chunk_text(text, max_chars=max_chunk_chars, overlap=chunk_overlap_chars)
 
-    # 1. Estrazione per-chunk: accumula entita' e relazioni grezze.
+    # 1. Estrazione per-chunk: i chunk sono indipendenti, quindi le chiamate LLM
+    #    possono andare in PARALLELO (`max_concurrency > 1`). `executor.map`
+    #    preserva l'ordine dei chunk -> il risultato resta deterministico (dedup
+    #    e community detection vedono le entita' nello stesso ordine del caso
+    #    sequenziale). Su un solo chunk o concorrenza 1 resta sequenziale.
+    if max_concurrency <= 1 or len(chunks) <= 1:
+        graphs = [extractor.extract(chunk, language=language) for chunk in chunks]
+    else:
+        with ThreadPoolExecutor(max_workers=min(max_concurrency, len(chunks))) as pool:
+            graphs = list(pool.map(lambda c: extractor.extract(c, language=language), chunks))
+
     raw_entities: list[ExtractedEntity] = []
     raw_relations: list[ExtractedRelation] = []
-    for chunk in chunks:
-        graph = extractor.extract(chunk)
+    for graph in graphs:
         raw_entities.extend(graph.entities)
         raw_relations.extend(graph.relations)
 
@@ -137,8 +154,8 @@ def extract_knowledge(
         )
         embeddings.append(EntityVector(entity_id=eid, name=entity.name, vector=entity.embedding))
 
-    # 7. Riassunto multilivello.
-    summary = summarizer.summarize(chunks)
+    # 7. Riassunto multilivello (nella lingua di output scelta).
+    summary = summarizer.summarize(chunks, language=language)
 
     meta: dict[str, Any] = {
         "chunk_count": len(chunks),

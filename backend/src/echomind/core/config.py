@@ -330,6 +330,30 @@ class Settings(BaseSettings):
         description="Modello Gemini per gli embeddings. Source env: GEMINI_EMBEDDING_MODEL.",
     )
 
+    gemini_thinking_budget: int = Field(
+        default=-1,
+        ge=-1,
+        description=(
+            "Budget di 'thinking' (token di ragionamento interno) per le chiamate "
+            "generative Gemini 2.5+. -1 = DEFAULT: non inviamo il parametro, quindi vale "
+            "il comportamento nativo del modello (thinking dinamico ABILITATO su 2.5 Flash) "
+            "-- piu' qualita' sul ragionamento multi-step, a costo di latenza. 0 = thinking "
+            "DISATTIVATO: piu' veloce su task fattuali/strutturati, con possibile lieve calo "
+            "di qualita'. >0 = budget fisso di token. Source env: GEMINI_THINKING_BUDGET."
+        ),
+    )
+
+    gemini_max_retries: int = Field(
+        default=3,
+        ge=0,
+        description=(
+            "Tentativi extra per le singole chiamate Gemini su errori transienti (429 "
+            "rate-limit, 5xx), con backoff esponenziale DENTRO il thread. Evita che un 429 "
+            "isolato faccia fallire e ri-eseguire l'intero documento (importante con "
+            "l'estrazione in parallelo). Source env: GEMINI_MAX_RETRIES."
+        ),
+    )
+
     embedding_dimensions: int = Field(
         default=768,
         gt=0,
@@ -343,6 +367,17 @@ class Settings(BaseSettings):
         default=12000,
         gt=0,
         description="Dimensione massima (caratteri) di un chunk di testo passato all'LLM.",
+    )
+
+    extraction_max_concurrency: int = Field(
+        default=4,
+        gt=0,
+        description=(
+            "Numero massimo di chunk estratti IN PARALLELO (chiamate Gemini concorrenti). "
+            "I chunk sono indipendenti: parallelizzarli riduce drasticamente il tempo totale "
+            "su documenti lunghi. Valori troppo alti sul free tier aumentano i 429 (mitigati "
+            "da gemini_max_retries). 1 = sequenziale. Source env: EXTRACTION_MAX_CONCURRENCY."
+        ),
     )
 
     extraction_chunk_overlap_chars: int = Field(
@@ -366,6 +401,36 @@ class Settings(BaseSettings):
         description=(
             "Soft time limit del task di estrazione (secondi). Alto come la trascrizione: "
             "molte chiamate LLM su documenti lunghi richiedono minuti."
+        ),
+    )
+
+    # -------------------------------------------------------------------------
+    # GraphRAG / Q&A per-documento (M8)
+    # -------------------------------------------------------------------------
+    rag_top_k: int = Field(
+        default=8,
+        gt=0,
+        description=(
+            "Numero di entita' piu' vicine recuperate da pgvector per ogni domanda RAG. "
+            "Valore piu' alto = contesto piu' ricco ma latenza maggiore."
+        ),
+    )
+
+    rag_neighbor_hops: int = Field(
+        default=1,
+        gt=0,
+        description=(
+            "Profondita' del vicinato Neo4j a partire dalle entita' seme (top-K). "
+            "1 = vicini diretti; 2 = vicini dei vicini. Default 1 per bilanciare contesto e latenza."
+        ),
+    )
+
+    rag_max_question_chars: int = Field(
+        default=2000,
+        gt=0,
+        description=(
+            "Lunghezza massima (caratteri) di una domanda RAG. "
+            "Corrisponde al max_length del campo `question` in AskRequest."
         ),
     )
 

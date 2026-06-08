@@ -19,9 +19,9 @@ name: CI
 
 on:
   push:
-    # Triggera la CI anche sui feature branch durante lo sviluppo:
-    # così abbiamo feedback continuo senza dover aprire una PR draft.
-    branches: [main, develop, 'feature/**']
+    # Triggera la CI anche sui branch di sviluppo (feat/, fix/, feature/)
+    # durante il lavoro: feedback continuo senza dover aprire una PR draft.
+    branches: [main, develop, 'feat/**', 'fix/**', 'feature/**']
   pull_request:
     branches: [main, develop]
 

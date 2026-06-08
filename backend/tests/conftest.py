@@ -175,13 +175,20 @@ async def seed_auth_user(
 ) -> AsyncIterator[Callable[[UUID], Awaitable[None]]]:
     """Factory che inserisce un utente fittizio in `auth.users`.
 
-    Pattern: `await seed_auth_user(user_id)` → riga creata.
-    Necessaria prima di creare profile, perché FK `profiles.id → auth.users.id`.
+    Pattern: `await seed_auth_user(user_id)` --> riga creata.
+    Necessaria prima di creare profile, perche' FK `profiles.id -> auth.users.id`.
 
-    Cleanup automatico: alla fine del test, TRUNCATE CASCADE su `auth.users`
-    rimuove anche tutti i profile creati (via FK ON DELETE CASCADE).
-    Questo garantisce isolamento tra test senza richiedere autouse globale.
+    Cleanup automatico: alla fine del test vengono rimossi SOLO gli utenti
+    inseriti da questo fixture (DELETE WHERE id = ANY(...)).
+    La DELETE a cascata (FK ON DELETE CASCADE) rimuove profile, documenti e
+    tutto il resto creato da quel test -- senza toccare utenti pre-esistenti.
+
+    ATTENZIONE -- vecchio approccio (TRUNCATE CASCADE):
+      Il TRUNCATE azzerava l'intera tabella auth.users, cancellando anche gli
+      utenti "reali" presenti nel DB di sviluppo. Il DELETE selettivo qui sotto
+      risolve il problema: ogni test pulisce solo i propri dati.
     """
+    inserted_ids: list[UUID] = []
 
     async def _insert(user_id: UUID) -> None:
         await system_session.execute(
@@ -189,12 +196,18 @@ async def seed_auth_user(
             {"id": str(user_id)},
         )
         await system_session.commit()
+        inserted_ids.append(user_id)
 
     yield _insert
 
-    # Cleanup post-test: rimuove tutto ciò creato durante il test
-    await system_session.execute(text("TRUNCATE TABLE auth.users CASCADE"))
-    await system_session.commit()
+    # Cleanup post-test: rimuove SOLO gli utenti creati da questo test.
+    # La FK ON DELETE CASCADE si occupa di profile, documents, tasks, ecc.
+    if inserted_ids:
+        await system_session.execute(
+            text("DELETE FROM auth.users WHERE id = ANY(:ids)"),
+            {"ids": [str(uid) for uid in inserted_ids]},
+        )
+        await system_session.commit()
 
 
 # -----------------------------------------------------------------------------

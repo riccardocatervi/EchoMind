@@ -13,6 +13,10 @@ from echomind.extraction.schema import DocumentSummary
 
 
 class Summarizer(Protocol):
-    """Riassume i chunk di un documento in un `DocumentSummary` multilivello."""
+    """Riassume i chunk di un documento in un `DocumentSummary` multilivello.
 
-    def summarize(self, chunks: Sequence[str]) -> DocumentSummary: ...
+    `language` e' la lingua di OUTPUT (codice it/en): il riassunto viene scritto
+    in quella lingua a prescindere dalla lingua del documento.
+    """
+
+    def summarize(self, chunks: Sequence[str], *, language: str) -> DocumentSummary: ...

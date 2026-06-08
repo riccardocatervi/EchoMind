@@ -33,12 +33,15 @@ from echomind.core.config import Settings
 from echomind.core.security import JWTClaims, decode_and_validate, extract_bearer_token
 from echomind.db.repositories import (
     DocumentRepository,
+    EmbeddingRepository,
     ProfileRepository,
     SummaryRepository,
     TaskRepository,
     TranscriptRepository,
 )
 from echomind.db.session import set_rls_user
+from echomind.extraction.gemini import GeminiEmbedder
+from echomind.rag.answerer import RagAnswerer
 from echomind.services import (
     B2StorageService,
     DocumentService,
@@ -46,6 +49,8 @@ from echomind.services import (
     GraphStore,
     GraphStoreError,
     ProfileService,
+    RagService,
+    RagUnavailableError,
     StorageError,
     SummaryService,
     TaskService,
@@ -322,3 +327,38 @@ async def get_graph_service(session: SessionDep, graph_store: GraphStoreDep) -> 
 
 
 GraphServiceDep = Annotated[GraphService, Depends(get_graph_service)]
+
+
+async def get_rag_service(
+    request: Request,
+    session: SessionDep,
+    graph_store: GraphStoreDep,
+    settings: SettingsDep,
+) -> RagService:
+    """Costruisce un RagService, o solleva RagUnavailableError (-> 503).
+
+    Richiede che `app.state.rag_embedder` e `app.state.rag_answerer` siano stati
+    inizializzati nel lifespan. Se uno dei due e' None (GEMINI_API_KEY assente o
+    Gemini non raggiungibile all'avvio), il dep solleva RagUnavailableError che
+    viene mappato a 503 dall'exception handler globale.
+    """
+    embedder: GeminiEmbedder | None = getattr(request.app.state, "rag_embedder", None)
+    answerer: RagAnswerer | None = getattr(request.app.state, "rag_answerer", None)
+    if embedder is None or answerer is None:
+        raise RagUnavailableError(
+            "RAG backend not configured "
+            "(GEMINI_API_KEY missing or Gemini client unavailable at startup)."
+        )
+    return RagService(
+        documents=DocumentRepository(session),
+        embeddings=EmbeddingRepository(session),
+        summaries=SummaryRepository(session),
+        graph_store=graph_store,
+        embedder=embedder,
+        answerer=answerer,
+        top_k=settings.rag_top_k,
+        neighbor_hops=settings.rag_neighbor_hops,
+    )
+
+
+RagServiceDep = Annotated[RagService, Depends(get_rag_service)]

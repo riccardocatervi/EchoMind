@@ -8,6 +8,7 @@ import { GraphBackground } from "@/shared/components/GraphBackground";
 import { LanguageSwitcher } from "@/shared/components/LanguageSwitcher";
 import { ThemeToggle } from "@/shared/components/ThemeToggle";
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { useProfile } from "@/features/profile/api/queries";
 
 /**
  * Guscio dell'area autenticata: topbar sticky + sfondo animato + <Outlet/> + Footer.
@@ -20,7 +21,11 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
  *
  * Header -- link al profilo:
  *  Icona UserRound sempre visibile + nome (o email) come testo solo su lg+.
- *  In questo modo non c'e' duplicazione: un singolo elemento cliccabile.
+ *
+ * Lingua:
+ *  Il LanguageSwitcher controlla SOLO la lingua dell'interfaccia (i18n).
+ *  La lingua di output (riassunti, grafo, RAG) e' gestita separatamente
+ *  da profiles.preferred_language e non influenza i18n.
  *
  * Logout:
  *  signOut() aggiorna lo store Supabase -> ProtectedRoute rileva
@@ -29,6 +34,9 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
 export function AppShell() {
   const { user, signOut } = useAuth();
   const { t } = useTranslation();
+  // Il profilo viene caricato per le query che ne hanno bisogno (es. DocumentDetailPage).
+  // Non viene usato per sincronizzare la lingua UI: le due lingue sono indipendenti.
+  useProfile();
 
   // Recupera il nome da user_metadata (salvato al signup).
   // Se non disponibile, mostra l'email come fallback.

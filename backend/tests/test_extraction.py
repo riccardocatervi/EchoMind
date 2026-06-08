@@ -147,8 +147,10 @@ def test_detect_communities_isolated_node_gets_a_community() -> None:
 class _FakeExtractor:
     def __init__(self, graph: ChunkGraph) -> None:
         self._graph = graph
+        self.languages: list[str] = []  # registra la lingua ricevuta a ogni chunk
 
-    def extract(self, text: str) -> ChunkGraph:
+    def extract(self, text: str, *, language: str) -> ChunkGraph:
+        self.languages.append(language)
         return self._graph
 
 
@@ -169,14 +171,18 @@ class _FakeEmbedder:
 
 
 class _FakeSummarizer:
-    def summarize(self, chunks: Sequence[str]) -> DocumentSummary:
+    def __init__(self) -> None:
+        self.languages: list[str] = []  # registra la lingua ricevuta
+
+    def summarize(self, chunks: Sequence[str], *, language: str) -> DocumentSummary:
+        self.languages.append(language)
         return DocumentSummary(
             overview="panoramica", sections=[SummarySection(title="T", content="C")]
         )
 
 
 class _RaisingExtractor:
-    def extract(self, text: str) -> ChunkGraph:
+    def extract(self, text: str, *, language: str) -> ChunkGraph:
         raise LLMError("estrazione fallita", retryable=False)
 
 
@@ -207,6 +213,52 @@ def test_extract_knowledge_end_to_end() -> None:
     assert {entity.id for entity in result.entities} == {emb.entity_id for emb in result.embeddings}
     # Le community sono assegnate.
     assert all(entity.community is not None for entity in result.entities)
+
+
+def test_extract_knowledge_passes_language_to_adapters() -> None:
+    """La lingua di output scelta arriva a extractor.extract e summarizer.summarize."""
+    graph = ChunkGraph(
+        entities=[ExtractedEntity(name="Alan Turing", type="PERSON", description="matematico")],
+        relations=[],
+    )
+    extractor = _FakeExtractor(graph)
+    summarizer = _FakeSummarizer()
+
+    extract_knowledge(
+        text="testo su turing " * 3,
+        extractor=extractor,
+        embedder=_FakeEmbedder(),
+        summarizer=summarizer,
+        max_chunk_chars=10_000,
+        chunk_overlap_chars=0,
+        dedup_threshold=0.85,
+        language="en",
+    )
+
+    assert extractor.languages and all(lang == "en" for lang in extractor.languages)
+    assert summarizer.languages == ["en"]
+
+
+def test_extract_knowledge_defaults_language_to_italian() -> None:
+    """Senza language esplicito, la pipeline usa il default italiano."""
+    graph = ChunkGraph(
+        entities=[ExtractedEntity(name="X", type="CONCEPT")],
+        relations=[],
+    )
+    extractor = _FakeExtractor(graph)
+    summarizer = _FakeSummarizer()
+
+    extract_knowledge(
+        text="testo qualunque " * 3,
+        extractor=extractor,
+        embedder=_FakeEmbedder(),
+        summarizer=summarizer,
+        max_chunk_chars=10_000,
+        chunk_overlap_chars=0,
+        dedup_threshold=0.85,
+    )
+
+    assert summarizer.languages == ["it"]
 
 
 def test_extract_knowledge_propagates_llm_error() -> None:

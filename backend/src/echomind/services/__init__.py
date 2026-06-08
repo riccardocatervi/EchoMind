@@ -27,6 +27,12 @@ from echomind.services.graph_store import (
     GraphStoreError,
 )
 from echomind.services.profile import ProfileService
+from echomind.services.rag import (
+    RagError,
+    RagNotReadyError,
+    RagService,
+    RagUnavailableError,
+)
 from echomind.services.storage import (
     B2StorageService,
     ObjectMetadata,
@@ -65,6 +71,10 @@ __all__ = [
     "GraphStoreError",
     "ObjectMetadata",
     "ProfileService",
+    "RagError",
+    "RagNotReadyError",
+    "RagService",
+    "RagUnavailableError",
     "StorageError",
     "StorageObjectNotFoundError",
     "SummaryError",
