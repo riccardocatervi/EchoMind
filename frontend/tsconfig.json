@@ -21,8 +21,8 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
 
-    /* Path alias "@/..." -> "src/..." */
-    "baseUrl": ".",
+    /* Path alias "@/..." -> "src/..." (bundler mode: i paths si risolvono
+       relativi al tsconfig, niente baseUrl — deprecato in TS 7.0) */
     "paths": {
       "@/*": ["./src/*"]
     }
