@@ -1,3 +1,32 @@
+/**
+ * Pagina del profilo utente: gestione dati personali e preferenze di output.
+ *
+ * Struttura a card separate (una per sezione):
+ *   Nome / Email / Password / Lingua output / Elimina account
+ *   Layout: 2 colonne su md, 3 colonne su xl (CSS grid).
+ *
+ * Perché `supabase.auth.updateUser()` e non l'API backend per nome/email/password:
+ *   Nome, email e password sono dati gestiti da Supabase Auth (non da `profiles`).
+ *   Il backend non ha endpoint per modificarli (è auth di sistema, non applicativo).
+ *   `supabase.auth.updateUser()` chiama direttamente l'endpoint Supabase:
+ *     - Nome → user.user_metadata.first_name / last_name
+ *     - Email → Supabase manda una confirm email al NUOVO indirizzo prima di cambiare
+ *     - Password → cambia immediatamente (nessuna riconferma via email richiesta)
+ *
+ * `preferred_language` (LanguageSection):
+ *   È una colonna di `public.profiles` (non di auth.users) → va via API backend
+ *   (PATCH /users/me o endpoint profilo). Non modifica la lingua dell'interfaccia
+ *   (quella è gestita da i18n / LanguageSwitcher): controlla la lingua degli output
+ *   della pipeline (summary, grafo, risposte RAG) generati dal worker.
+ *
+ * `DeleteAccountSection`:
+ *   DELETE /users/me: il backend elimina in ordine:
+ *     1. Presigned URL revocati (S3/B2)
+ *     2. Nodi Neo4j
+ *     3. auth.users (cascade su profiles/documents/tasks)
+ *     4. Oggetti B2 (best-effort)
+ *   Poi: `signOut()` pulisce il JWT locale → ProtectedRoute redirige a "/".
+ */
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { PasswordInput } from "@/shared/components/PasswordInput";

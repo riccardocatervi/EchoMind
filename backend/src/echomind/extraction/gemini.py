@@ -135,7 +135,7 @@ class GeminiGraphExtractor:
                         system_instruction=_extraction_system_prompt(language),
                         response_mime_type="application/json",
                         response_schema=ChunkGraph,
-                        temperature=0.0,
+                        temperature=0.0, # output deterministico, nessuna creatività
                         thinking_config=self._thinking,
                     ),
                 ),

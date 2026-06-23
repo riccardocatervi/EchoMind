@@ -1,3 +1,25 @@
+/**
+ * Dashboard dei documenti dell'utente.
+ *
+ * Responsabilità:
+ *   - Carica la lista documenti (con auto-polling se in elaborazione).
+ *   - Filtra client-side per filename (case-insensitive) nella barra di ricerca.
+ *   - Mostra skeleton durante il loading e stati vuoti (lista vuota / errore /
+ *     nessun risultato dalla ricerca) come card con feedback contestuale.
+ *
+ * Perché filtro client-side anziché server-side:
+ *   La lista documenti di un utente è tipicamente piccola (< 100 elementi).
+ *   Il filtro client-side è istantaneo (zero latenza) e non richiede endpoint
+ *   dedicati di search. Un endpoint server-side ha senso solo per dataset grandi.
+ *
+ * Perché <Trans> anziché t() per il suggerimento lingua:
+ *   Il link <Link to="/profile"> è JSX inline dentro la stringa i18n.
+ *   `Trans` permette di interpolare componenti React nelle traduzioni mantenendo
+ *   la stringa localizzabile (es. "Lingua output: cambia nel tuo <link>profilo</link>").
+ *
+ * Il layout a griglia (2 col su sm, 3 col su lg) si adatta al breakpoint:
+ *   Tailwind "sm:grid-cols-2 lg:grid-cols-3" usa i breakpoint di default (640/1024px).
+ */
 import { useState } from "react";
 import { AlertTriangle, FileText, Search } from "lucide-react";
 import { Trans, useTranslation } from "react-i18next";

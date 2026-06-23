@@ -1,3 +1,26 @@
+/**
+ * Dialog modale per l'upload di un documento.
+ *
+ * Flusso in 3 fasi (gestito da `useUploadDocument` in mutations.ts):
+ *   1. Selezione file:    FileDropzone → `setFile(file)`
+ *   2. Upload su B2:     XHR diretto con `onProgress` → aggiorna `progress` (0→100)
+ *   3. Conferma backend: POST /confirm → validazione MIME + status=uploaded
+ *
+ * Perché il dialog non si chiude durante l'upload (`upload.isPending`):
+ *   Chiudere il dialog durante un upload XHR abortirebbe la trasmissione.
+ *   `handleOpenChange` controlla questo: se `isPending`, il click fuori dal dialog
+ *   o il tasto Escape non ha effetto. L'utente è costretto ad aspettare o a
+ *   cliccare "Annulla" esplicitamente (che però non cancella l'XHR in volo — limite
+ *   accettato: il presigned URL scade e il backend non vede l'oggetto B2).
+ *
+ * Perché `progress < 100 ? t("upload.progress") : t("upload.checking")`:
+ *   Quando XHR raggiunge 100%, la fase 3 (confirmUpload) sta ancora girando sul
+ *   backend (HEAD + magic bytes). Mostrare "Verifica in corso..." durante questo
+ *   intervallo evita di sembrare bloccato al 100%.
+ *
+ * `reset()` ripristina lo stato locale alla chiusura del dialog: senza questo,
+ *   riaprendo il dialog il file precedente sarebbe ancora selezionato.
+ */
 import { useState } from "react";
 import { Loader2, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";

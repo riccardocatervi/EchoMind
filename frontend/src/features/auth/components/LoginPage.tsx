@@ -1,3 +1,32 @@
+/**
+ * Pagina di login con form email + password.
+ *
+ * Flusso di autenticazione:
+ *   1. `credentialsSchema.safeParse(...)`: validazione Zod client-side (email formato,
+ *      password minima). Mostra errore immediato PRIMA di chiamare Supabase → UX
+ *      più reattiva (zero latenza per errori di formato).
+ *   2. `signInWithPassword(email, password)`: chiama Supabase Auth.
+ *   3. Se successo → `navigate("/documents", { replace: true })`.
+ *      `replace` evita che il tasto "indietro" riporti al login dopo l'accesso.
+ *
+ * `Navigate replace` se già autenticato:
+ *   Redirect diretto se `status === "authenticated"` (utente che riapre /login
+ *   senza fare logout). Senza questo, l'utente autenticato vedrebbe il form vuoto.
+ *
+ * `formRef.current?.requestSubmit()` in `onKeyDown`:
+ *   Invece di chiamare `handleSubmit` direttamente, `requestSubmit()` fa triggerare
+ *   l'evento `submit` del form → attiva la validazione nativa del browser (es.
+ *   `required`) prima di arrivare a `handleSubmit`. Più corretto di `submit()`.
+ *
+ * `YetiAvatar`:
+ *   Mascotte animata che copre gli occhi quando la password è visibile
+ *   (passwordFocused + passwordVisible). Stato di focus e valore email
+ *   vengono passati all'avatar per animazioni sincronizzate.
+ *
+ * `noValidate` sul form:
+ *   Disabilita la validazione nativa del browser (popup del browser su campo
+ *   invalido). Gestiamo la validazione con Zod e mostriamo errori nel DOM.
+ */
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { Loader2 } from "lucide-react";

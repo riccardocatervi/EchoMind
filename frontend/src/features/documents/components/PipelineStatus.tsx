@@ -1,3 +1,27 @@
+/**
+ * Stepper orizzontale del lifecycle del documento a 4 fasi.
+ *
+ * Design:
+ *   Ogni step può essere in uno di 4 stati visuali:
+ *     done     → cerchio verde con ✓ (fase completata)
+ *     active   → cerchio blu con spinner animato (fase in corso)
+ *     failedHere → cerchio rosso con ✗ (failure al primo step — semplificazione)
+ *     pending  → cerchio grigio con numero progressivo (fase non ancora raggiunta)
+ *
+ * `PROGRESS[status]`:
+ *   Mappa lo status del documento al numero di step già completati. Il confronto
+ *   `index < progress` identifica gli step "done"; `index === progress` è lo step
+ *   "active" corrente. L'unica eccezione è "failed": mostra lo ✗ sempre al primo
+ *   step (index=0) indipendentemente da dove fosse realmente la pipeline.
+ *
+ * Perché le label vengono da i18n (`t("pipeline.<key>")`):
+ *   La pipeline si chiama uguale in tutte le lingue ma le label (es. "Caricato",
+ *   "Uploaded") devono essere tradotte. `STEP_KEYS` sono le chiavi i18n, non
+ *   il testo visuale diretto.
+ *
+ * Il separatore orizzontale `<span aria-hidden="true" />` è nascosto su mobile
+ *   (`hidden sm:inline-block`) per non overflow su schermi piccoli.
+ */
 import { Check, Loader2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 

@@ -1,3 +1,20 @@
+/**
+ * Query hooks per il grafo di conoscenza e il Q&A RAG.
+ *
+ * `useGraph`:
+ *   Non fa polling: il grafo cambia solo quando viene ri-estratto manualmente.
+ *   `enabled` viene impostato a false da DocumentDetailPage finché il documento
+ *   non raggiunge lo status "extracted" o "completed" — evita fetch prematuri
+ *   che tornerebbero 404 (il grafo non esiste ancora in Neo4j).
+ *
+ * Perché `enabled: Boolean(documentId) && (options.enabled ?? true)`:
+ *   Doppia guardia: `Boolean(documentId)` evita fetch con ID vuoto (stringa "");
+ *   `options.enabled` permette al chiamante di disabilitare esplicitamente il
+ *   fetch finché le condizioni preliminari non sono soddisfatte.
+ *
+ * Il Q&A RAG (askDocument) non ha un useQuery dedicato: è una mutation one-shot
+ * (POST /ask) gestita direttamente in GraphQaPanel con useState locale.
+ */
 import { useQuery } from "@tanstack/react-query";
 
 import { graphKeys } from "@/features/graph/api/keys";
@@ -5,10 +22,8 @@ import { getGraph } from "@/features/graph/api/requests";
 
 /**
  * Grafo di conoscenza di un documento.
- *
- * `enabled` (default true) controlla se la query viene eseguita.
- * Abilitare quando document.status e' 'extracted' o 'completed':
- * il grafo e' in Neo4j dall'istante in cui lo stato diventa 'extracted'.
+ * Abilitare solo quando document.status è "extracted" o "completed"
+ * (il grafo è in Neo4j solo da quel momento in poi).
  */
 export function useGraph(documentId: string | undefined, options: { enabled?: boolean } = {}) {
   return useQuery({

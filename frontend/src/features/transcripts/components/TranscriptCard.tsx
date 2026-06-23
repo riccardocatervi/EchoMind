@@ -1,3 +1,24 @@
+/**
+ * Card del transcript testuale del documento.
+ *
+ * Mostra:
+ *   - Conteggio caratteri (`char_count` precomputato dal backend, non ricalcolato).
+ *   - Lingua rilevata (solo per trascrizioni audio Whisper; null per documenti testo).
+ *   - Il testo completo in un'area scrollabile con max-height: 320px.
+ *
+ * `max-h-80 overflow-y-auto`:
+ *   Limita l'altezza della card a 320px. I transcript di documenti lunghi (libri,
+ *   audio di ore) possono essere molto grandi (>100.000 caratteri). Mostrare tutto
+ *   il testo flat renderebbe la pagina inutilizzabile. L'area scrollabile permette
+ *   di leggere senza bloccare il layout.
+ *
+ * `whitespace-pre-wrap`:
+ *   Preserva gli a capo originali del transcript (newline da Whisper / parser PDF).
+ *   Senza questo, tutto il testo sarebbe su una sola riga.
+ *
+ * `toLocaleString("it-IT")` su `char_count`:
+ *   Formatta il numero con separatore migliaia italiano (es. 12.345 invece di 12345).
+ */
 import { FileText } from "lucide-react";
 import { useTranslation } from "react-i18next";
 

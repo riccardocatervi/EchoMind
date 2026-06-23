@@ -1,3 +1,27 @@
+/**
+ * Card di anteprima per un documento nella dashboard.
+ *
+ * Responsabilità:
+ *   - Mostra filename, dimensione, data creazione e StatusBadge.
+ *   - Fornisce i link "Apri" (→ DocumentDetailPage) e il pulsante "Elimina".
+ *   - La cancellazione richiede conferma tramite AlertDialog (pattern UX sicuro:
+ *     un'azione distruttiva irreversibile deve sempre avere un doppio clic).
+ *
+ * Perché AlertDialog invece di window.confirm:
+ *   `window.confirm` è sincrono e blocca il thread JS. AlertDialog è un componente
+ *   React asincrono che integra accessibilità (focus trap, ARIA roles) e può essere
+ *   stilizzato in modo coerente con il design system.
+ *
+ * Perché `deleteDocument.isPending` disabilita i pulsanti:
+ *   Evita doppie richieste di cancellazione (es. doppio click). La mutation è
+ *   idempotente (il backend risponde 404 al secondo tentativo), ma disabilitare
+ *   il pulsante è più sicuro e dà feedback visivo all'utente (spinner + disabled).
+ *
+ * `isApiError(error)` (type guard):
+ *   Distingue gli errori HTTP (ApiError con .message dal backend) dagli errori
+ *   di rete puri (Error generico). Mostra il messaggio localizzato del backend
+ *   quando disponibile, il fallback i18n altrimenti.
+ */
 import { useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";

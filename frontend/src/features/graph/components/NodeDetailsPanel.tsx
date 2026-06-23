@@ -1,3 +1,29 @@
+/**
+ * Pannello laterale del dettaglio di un nodo del grafo (overlay a destra).
+ *
+ * Appare quando l'utente clicca un nodo in GraphViewer.
+ * Mostra: nome, tipo (colorato con communityColor), descrizione,
+ * lista di relazioni (archi entranti + uscenti) cliccabili.
+ *
+ * Navigazione per relazioni:
+ *   Cliccando una relazione si chiama `onSelectNode(neighbor.id)`, che
+ *   aggiorna `selectedNodeId` nello store → GraphViewer evidenzia il vicino
+ *   e il pannello si aggiorna per mostrarne il dettaglio. Permette di
+ *   "navigare" il grafo di relazione in relazione senza usare il mouse sul canvas.
+ *
+ * Frecce `->` / `<-`:
+ *   Indicano la direzione della relazione rispetto al nodo corrente.
+ *   `outgoing = edge.source === node.id` → freccia uscente `->`.
+ *
+ * Posizionamento responsive:
+ *   Mobile (< sm): pannello in basso (`inset-x-4 bottom-4`).
+ *   Desktop (≥ sm): pannello laterale destro (`right-4 top-4 w-72`).
+ *
+ * `nameById` (Map<id, name>):
+ *   Lookup O(1) per trovare il nome del vicino dato il suo ID.
+ *   Costruito una volta con `graph.nodes.map(...)` invece di fare un `.find()`
+ *   per ogni arco (O(N) vs O(1) per ogni vicino).
+ */
 import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
