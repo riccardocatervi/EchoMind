@@ -37,9 +37,9 @@ export const documentStatusSchema = z.enum([
   "pending",
   "uploaded",
   "transcribed", // M4 completato: transcript disponibile
-  "extracted",  // M5 parziale: grafo in Neo4j disponibile
-  "completed",  // M5 completo: summary + embeddings pronti (stato terminale positivo)
-  "failed",     // terminale negativo
+  "extracted", // M5 parziale: grafo in Neo4j disponibile
+  "completed", // M5 completo: summary + embeddings pronti (stato terminale positivo)
+  "failed", // terminale negativo
 ]);
 export type DocumentStatus = z.infer<typeof documentStatusSchema>;
 
