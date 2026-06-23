@@ -1,3 +1,31 @@
+/**
+ * Area drag&drop + file picker con validazione MIME e dimensione lato client.
+ *
+ * Perché validare client-side se il backend valida comunque:
+ *   La validazione server-side (magic bytes check) è la SOURCE OF TRUTH e non
+ *   può essere bypassata. La validazione client-side è una UX optimization:
+ *   dà feedback immediato (<100ms) senza round-trip HTTP, risparmiando banda.
+ *
+ * Accessibilità (a11y):
+ *   `role="button"` + `tabIndex={0}` + `onKeyDown` (Enter/Space) rendono la
+ *   dropzone navigabile via tastiera (stessa semantica di un <button>). Senza
+ *   questo, un utente che naviga col keyboard non potrebbe aprire il file picker.
+ *   Il `<input type="file" className="hidden">` è l'elemento reale; il div è il
+ *   decoratore visivo (non usiamo <button> perché non si può avere un <button>
+ *   correttamente stylo come dropzone).
+ *
+ * `event.target.value = ""` dopo l'onChange:
+ *   Resetta l'input file. Senza questo, selezionare lo stesso file due volte
+ *   non triggera `onChange` (il browser considera il valore invariato).
+ *
+ * `useRef<HTMLInputElement>` anziché document.getElementById:
+ *   Approccio React idiomatico per accedere a elementi DOM: nessuna dipendenza
+ *   dall'ordine di rendering, nessun rischio di collidere con altri elementi.
+ *
+ * Due render path:
+ *   - `file` selezionato → mostra il filename + pulsante rimozione.
+ *   - `file` null        → mostra la dropzone con hint drag&drop.
+ */
 import { useRef, useState, type DragEvent } from "react";
 import { UploadCloud, X } from "lucide-react";
 import { useTranslation } from "react-i18next";

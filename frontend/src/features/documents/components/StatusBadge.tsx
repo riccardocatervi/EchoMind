@@ -1,3 +1,21 @@
+/**
+ * Pillola colorata che indica lo stato di elaborazione di un documento.
+ *
+ * Perché i colori amber/emerald/destructive anziché i colori di status Tailwind:
+ *   La palette usa classi Tailwind con opacità (`/15`, `/20`, `/30`) per creare
+ *   pillole trasparenti che funzionano sia su sfondo chiaro che scuro.
+ *   amber = "in elaborazione" (tutti gli stati non-terminali);
+ *   emerald = "completato con successo";
+ *   destructive = "errore terminale".
+ *
+ * Le label vengono da i18n (`t("status.<stato>")`):
+ *   La logica di rendering è separata dalle stringhe (IT/EN). Il componente non
+ *   conosce la lingua: delega tutto a useTranslation.
+ *
+ * `Record<DocumentStatus, string>` su STATUS_CLASS:
+ *   TypeScript garantisce che ogni valore di DocumentStatus abbia un'entry.
+ *   Se si aggiunge uno stato all'enum e si dimentica la classe CSS, TS lancia.
+ */
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/shared/components/ui/badge";

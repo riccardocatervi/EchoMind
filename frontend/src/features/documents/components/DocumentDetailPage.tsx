@@ -1,3 +1,32 @@
+/**
+ * Pagina di dettaglio di un documento: mostra il lifecycle e i risultati della pipeline.
+ *
+ * Architettura di polling:
+ *   Un unico `useDocument` fa polling ogni 3s finché lo status non è terminale.
+ *   I figli (TranscriptCard, SummaryView) vengono abilitati condizionalmente tramite
+ *   gate `canShow*`, evitando fetch inutili che tornerebbero 404 durante l'elaborazione.
+ *
+ * Perché `canShowTranscript = status in {transcribed, extracted, completed}`:
+ *   Il transcript è disponibile dal momento M4 (transcribe task completato).
+ *   Il grafo richiede M5 parziale (extracted). Il summary richiede M5 completo (completed).
+ *
+ * Rilevamento documento bloccato (`isStuck`):
+ *   Se `updated_at` non cambia da 10 minuti in uno stato non-terminale, il task
+ *   è probabilmente morto in DLQ (Celery Dead Letter Queue). L'hook di polling
+ *   si ferma (timeout in useDocument) e mostriamo un avviso con pulsante manuale.
+ *
+ * Re-estrazione manuale:
+ *   `useTriggerExtraction` accodda il task e restituisce un task_id.
+ *   `useTask(reExtractTaskId, { poll: true })` fa polling sul task finché non è
+ *   terminale. Al successo, invalida le cache di summary e grafo per aggiornare
+ *   SummaryView e GraphViewer senza reload di pagina.
+ *
+ * Header sticky (`sticky top-14 z-10`):
+ *   top-14 = altezza dell'AppShell header (h-14 = 56px). Usare `top-14` invece
+ *   di `top-0` evita che l'header della pagina si sovrapponga all'header globale.
+ *   `-mx-[1.5rem] px-[1.5rem]`: nega e riapplica il padding del container per
+ *   avere sfondo e bordo inferiore a piena larghezza.
+ */
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Loader2, Network, RefreshCw } from "lucide-react";

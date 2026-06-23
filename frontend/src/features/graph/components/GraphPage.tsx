@@ -1,3 +1,25 @@
+/**
+ * Pagina full-canvas del grafo di conoscenza.
+ *
+ * Perché `export default` (e non named export come le altre pagine):
+ *   GraphPage è caricata in `lazy()` dal router (router.tsx):
+ *     `const GraphPage = lazy(() => import("@/features/graph/components/GraphPage"))`
+ *   React.lazy richiede che il modulo importato esporti il componente come
+ *   `default export`. Code splitting: il bundle del grafo (ELK.js + @xyflow/react)
+ *   è separato dal bundle principale → non viene scaricato finché l'utente
+ *   non naviga alla pagina del grafo (risparmio di ~300KB sul bundle iniziale).
+ *
+ * Gestione errori HTTP:
+ *   - 404 → grafo non ancora estratto o documento non di proprietà dell'utente
+ *           (il backend non distingue i due casi per evitare informazioni leakate).
+ *   - 503 → Neo4j non configurato (GRAPH_URL mancante nelle env del backend).
+ *   - altri → errore generico con il messaggio del backend.
+ *
+ * `h-[calc(100vh-12rem)]`:
+ *   Altezza del canvas = viewport totale meno header AppShell (h-14 = 56px) +
+ *   breadcrumb (link "← Documento") + padding (totale ≈ 12rem).
+ *   Senza questa altezza fissa, React Flow non sa quanto spazio occupare.
+ */
 import { AlertTriangle, ArrowLeft, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";

@@ -199,7 +199,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="EchoMind",
         version=__version__,
-        description="AI-Powered GraphRAG: documenti/audio → knowledge graph interattivi.",
+        description="AI-Powered GraphRAG: documenti/audio --> knowledge graph interattivi.",
         lifespan=lifespan,
         # Documentazione interattiva: Swagger UI su /docs, ReDoc su /redoc.
         # In produzione, valutare se disabilitarli (settings.app_env).
