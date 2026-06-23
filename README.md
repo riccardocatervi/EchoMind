@@ -288,6 +288,7 @@ See [`infra/supabase-prod-setup.sql`](infra/supabase-prod-setup.sql) for the one
 - **`docker compose up` fails: env file not found** → create `.env.production` from `.env.example` first.
 - **Windows: `make: command not found`** → use WSL2, or run the `docker compose` / `uv` / `pnpm` commands shown next to each target.
 - **Supabase + asyncpg errors about prepared statements / IPv6** → use the **Session pooler** URL (port 5432) with the `postgresql+asyncpg://` scheme.
+- **Graph view missing / API returns `graph_unavailable` (503)** → the **Neo4j AuraDB Free** instance auto-pauses after ~3 days of inactivity (its hostname stops resolving). Resume it from [console.neo4j.io](https://console.neo4j.io), then recreate the containers so they reconnect: `docker compose -f infra/docker-compose.prod.yml up -d --force-recreate api worker`. Data is preserved (the instance is only deleted after ~30 days paused).
 
 ---
 
@@ -489,6 +490,7 @@ Vedi [`infra/supabase-prod-setup.sql`](infra/supabase-prod-setup.sql) per il set
 - **`docker compose up` fallisce: env file non trovato** → crea prima `.env.production` da `.env.example`.
 - **Windows: `make: command not found`** → usa WSL2, oppure i comandi `docker compose` / `uv` / `pnpm` accanto a ogni target.
 - **Errori Supabase + asyncpg su prepared statement / IPv6** → usa l'URL del **Session pooler** (porta 5432) con schema `postgresql+asyncpg://`.
+- **Grafo non visibile / l'API risponde `graph_unavailable` (503)** → l'istanza **Neo4j AuraDB Free** si auto-pausa dopo ~3 giorni di inattività (il suo hostname smette di risolversi). Riattivala da [console.neo4j.io](https://console.neo4j.io), poi ricrea i container per riconnetterli: `docker compose -f infra/docker-compose.prod.yml up -d --force-recreate api worker`. I dati restano (l'istanza viene cancellata solo dopo ~30 giorni di pausa).
 
 ---
 

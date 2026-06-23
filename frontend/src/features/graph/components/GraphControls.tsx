@@ -1,3 +1,24 @@
+/**
+ * Pannello fluttuante di controllo del grafo (in alto a sinistra del viewer).
+ *
+ * Due funzionalità:
+ *   1. Ricerca nodi per nome (testo parziale, case-insensitive).
+ *      Aggiorna `searchTerm` in graphStore → GraphViewer dimma i non-match.
+ *
+ *   2. Legenda community interattiva (toggle visibilità per cluster):
+ *      Ogni community è mostrata come riga con cerchio colorato + conteggio nodi.
+ *      Cliccando si toglie/ripristina la visibilità di quella community nel grafo.
+ *      `aria-pressed={!hidden}`: semantica accessibile per pulsanti toggle.
+ *
+ * `useMemo` su `communities`:
+ *   Calcola la mappa community→count una sola volta per grafo (non a ogni render).
+ *   `graph.nodes` cambia solo quando arriva un nuovo grafo (ELK re-layout).
+ *
+ * `opacity-40` sulla community nascosta:
+ *   Effetto visuale sulla riga della legenda. I nodi effettivamente nascosti
+ *   nel canvas hanno `hidden: true` (impostato da GraphViewer nella seconda
+ *   useEffect).
+ */
 import { useMemo } from "react";
 import { Search, X } from "lucide-react";
 import { useTranslation } from "react-i18next";

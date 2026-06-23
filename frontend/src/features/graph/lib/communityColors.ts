@@ -1,4 +1,21 @@
-// Palette categoriale per le community (colore stabile per indice).
+/**
+ * Palette di colori categoriale per le community Louvain.
+ *
+ * Perché colori fissi anziché generati dinamicamente:
+ *   Una palette fissa garantisce che la community N abbia sempre lo stesso colore
+ *   in tutte le sessioni e in tutti i componenti (nodo, minimap, legenda).
+ *   Generare colori a runtime con `hsl(i * 360/n)` porta a colori che cambiano
+ *   se il numero di community cambia tra sessioni (ri-estrazione → colori diversi).
+ *
+ * Cycling con modulo (`% PALETTE.length`):
+ *   Se il numero di community supera la lunghezza della palette (10), i colori
+ *   si ripetono. Accettabile: raramente un documento ha >10 community distinte.
+ *
+ * `NO_COMMUNITY = slate-500`:
+ *   Grigio neutro per i nodi isolati (community=null). Non confondersi con la
+ *   palette categoriale.
+ */
+
 const PALETTE = [
   "#3B82F6", // blue
   "#22C55E", // green
@@ -12,9 +29,9 @@ const PALETTE = [
   "#F97316", // orange
 ];
 
-const NO_COMMUNITY = "#64748B"; // slate-500
+const NO_COMMUNITY = "#64748B"; // slate-500: nodi senza community assegnata
 
-/** Colore associato a una community (ciclico sulla palette). */
+/** Colore associato a una community (ciclico sulla palette se > 10 community). */
 export function communityColor(community: number | null): string {
   if (community === null || community < 0) return NO_COMMUNITY;
   return PALETTE[community % PALETTE.length];

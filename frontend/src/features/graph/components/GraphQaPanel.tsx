@@ -1,3 +1,29 @@
+/**
+ * Pannello Q&A basato su GraphRAG (overlay in basso a sinistra del viewer).
+ *
+ * Flusso:
+ *   1. Utente digita una domanda (Enter = invia, Shift+Enter = a capo).
+ *   2. `useAskDocument` fa POST /documents/:id/ask (mutation one-shot).
+ *   3. Il backend: embed question → pgvector top-K → Neo4j neighborhood →
+ *      Gemini structured output → risposta + citazioni.
+ *   4. Le citazioni sono badge cliccabili: `setSelectedNodeId(citation.entity_id)`
+ *      evidenzia il nodo citato nel grafo (stato condiviso via Zustand).
+ *
+ * Perché `useMutation` e non `useQuery` per il Q&A:
+ *   Le domande non hanno una chiave stabile (ogni domanda è diversa). Le query
+ *   TanStack sono indicizzate dalla `queryKey`: cache per domande non ha senso
+ *   (la risposta varia e l'utente non ripete le stesse domande). Mutation è
+ *   più appropriato per operazioni one-shot (POST senza cache).
+ *
+ * Gestione errori HTTP:
+ *   404 → grafo non pronto/non tuo (impossibile fare Q&A).
+ *   503 → Gemini o Neo4j non configurato (backend in modalità degradata).
+ *   altro → errore generico.
+ *
+ * `maxLength={2000}` sulla textarea:
+ *   Limite soft client-side (il backend valida con Pydantic `max_length=2000`).
+ *   Previene payload inutilmente grandi prima del round-trip HTTP.
+ */
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 import { AlertTriangle, ChevronDown, Loader2, MessageCircleQuestion, Send } from "lucide-react";
 import { useTranslation } from "react-i18next";

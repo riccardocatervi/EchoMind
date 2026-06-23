@@ -1,3 +1,26 @@
+/**
+ * Vista del summary multilivello del documento.
+ *
+ * Layout:
+ *   1. Statistiche del grafo (nodi, relazioni, community) da `summary.meta`.
+ *   2. Testo `overview` (riassunto globale generato da map-reduce sulle community).
+ *   3. `sections` come Accordion espandibili: ogni sezione corrisponde a un
+ *      cluster tematico (community Louvain) estratto dal grafo.
+ *
+ * Perché Accordion e non lista piatta:
+ *   Il summary può avere 5-15 sezioni (una per community). Mostrarle tutte aperte
+ *   renderebbe la pagina eccessivamente lunga. L'Accordion permette di espandere
+ *   solo le sezioni di interesse.
+ *
+ * `metaNumber(meta, key)`:
+ *   Helper sicuro per estrarre numeri dal JSONB (`meta` è `Record<string, unknown>`).
+ *   Non lancia se la chiave manca (es. summary generato con una versione vecchia
+ *   del backend che non salvava le statistiche) — ritorna null e nasconde lo stat.
+ *
+ * Le statistiche (nodi/relazioni/community) vengono da `summary.meta` e non da
+ * una chiamata a `/graph`: evita un round-trip extra solo per i conteggi.
+ * Il backend le salva in `meta` al momento della creazione del summary.
+ */
 import { ListTree, Network, Share2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 

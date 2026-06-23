@@ -1,3 +1,25 @@
+/**
+ * Pagina di registrazione con form completo (nome, cognome, email, password).
+ *
+ * Flusso:
+ *   1. `signupSchema.safeParse(...)`: validazione Zod client-side (tutti i campi).
+ *   2. `signUp(email, password, { first_name, last_name })`: chiamata Supabase Auth.
+ *      I metadata (nome/cognome) vengono salvati in `user.user_metadata`.
+ *   3a. Se Supabase restituisce `session`: navigazione diretta a /documents
+ *       (email confirmation disabilitata nel progetto di sviluppo).
+ *   3b. Se `session === null`: email confirmation richiesta → mostra messaggio.
+ *
+ * `data.session` come discriminante:
+ *   In Supabase, se "Email confirmation" è abilitata nelle impostazioni del progetto,
+ *   `signUp` ritorna `{ data: { session: null, user: {...} }, error: null }`.
+ *   La sessione è null finché l'utente non clicca il link di conferma.
+ *   Se la conferma è disabilitata, `session` è già valorizzato → login immediato.
+ *
+ * Nome/cognome in `user_metadata`:
+ *   Non c'è un campo "name" in Supabase Auth → si usano chiavi libere in
+ *   `user_metadata`. La convenzione (`first_name`/`last_name`) è definita qui e
+ *   letta in ProfilePage e AuthProvider (vedi `user?.user_metadata?.first_name`).
+ */
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";

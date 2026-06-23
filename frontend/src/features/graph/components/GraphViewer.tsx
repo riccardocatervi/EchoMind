@@ -1,3 +1,34 @@
+/**
+ * Viewer interattivo del grafo di conoscenza (React Flow + ELK).
+ *
+ * Architettura a due useEffect:
+ *
+ *   1° useEffect [graph, reset] — Layout asincrono:
+ *     Quando arriva un nuovo grafo (prop `graph` cambia), lancia il layout ELK
+ *     asincrono e salva il risultato in `baseRef.current`. `active` flag previene
+ *     race condition: se il componente si smonta prima che il layout finisca, il
+ *     callback non chiama setReady (React avverte se si fa setState su unmounted).
+ *
+ *   2° useEffect [ready, searchTerm, hiddenCommunities, selectedNodeId] — Filtri:
+ *     Deriva i nodi/archi visibili da `baseRef.current` applicando:
+ *       a) filtro community (hidden = nascondi nodo + archi incidenti)
+ *       b) ricerca per nome (dimming opacity: 0.25 sui non-match)
+ *       c) selezione (highlight nodo + vicini, dimming degli altri)
+ *     Perché `baseRef` invece di state: il layout calcolato non cambia mai tra
+ *     un filtro e l'altro. Usare uno state causerebbe re-layout inutili.
+ *
+ * `nodeTypes = { entity: EntityNode }`:
+ *   Mappa il tipo "entity" al componente React personalizzato `EntityNode`.
+ *   Definita FUORI dal componente per evitare che React Flow ri-registri i tipi
+ *   ad ogni render (causa flickering dei nodi custom).
+ *
+ * `useMemo` su `selectedNode`:
+ *   `graph.nodes.find(...)` è O(N). Usare useMemo evita di ricalcolarlo ad ogni
+ *   render (selectedNodeId può cambiare spesso su click).
+ *
+ * `proOptions={{ hideAttribution: true }}`:
+ *   Nasconde il watermark "React Flow" (richiede la Pro license o questa opzione).
+ */
 import "@xyflow/react/dist/style.css";
 
 import { useEffect, useMemo, useRef, useState } from "react";
