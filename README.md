@@ -5,11 +5,9 @@
 **AI-powered GraphRAG: turn documents and audio into interactive knowledge graphs and multi-level summaries.**
 **GraphRAG potenziato dall'AI: trasforma documenti e audio in grafi di conoscenza interattivi e riassunti multi-livello.**
 
-🌐 **Live demo:** https://d1r88wq8sndssf.cloudfront.net
-
 [![CI](https://github.com/riccardocatervi/EchoMind/actions/workflows/ci.yml/badge.svg)](https://github.com/riccardocatervi/EchoMind/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Deployed on AWS](https://img.shields.io/badge/deployed-AWS-FF9900?logo=amazonaws&logoColor=white)](https://d1r88wq8sndssf.cloudfront.net)
+[![AWS deployable](https://img.shields.io/badge/AWS-deployable-FF9900?logo=amazonaws&logoColor=white)](#deployment)
 [![Frontend: React](https://img.shields.io/badge/frontend-React%20%2B%20Vite-61DAFB?logo=react&logoColor=white)](#tech-stack)
 [![Backend: FastAPI](https://img.shields.io/badge/backend-FastAPI%20%2B%20Celery-009688?logo=fastapi&logoColor=white)](#tech-stack)
 
@@ -17,8 +15,8 @@
 
 </div>
 
-> ℹ️ The live instance runs on a stoppable EC2 instance to stay within the AWS Free Tier. If the API looks offline, it is being woken up for a demo — the static frontend always loads, the backend takes ~1–2 minutes after start.
-> L'istanza live gira su una EC2 spegnibile per restare nel Free Tier AWS. Se l'API sembra offline, è in fase di accensione per una demo — il frontend statico carica sempre, il backend è pronto ~1–2 minuti dopo lo start.
+> ℹ️ No public demo is currently available.
+> Al momento non è disponibile alcuna demo pubblica.
 
 ---
 
@@ -52,12 +50,6 @@ Typical flow:
 - 💬 **Natural-language Q&A (GraphRAG)** grounded on your own documents.
 - 🔐 **Per-user data isolation** enforced by database Row-Level Security.
 - 🌍 **Multilingual UI** (i18n) with output-language preference.
-
-## Live demo & test credentials
-
-- **URL:** https://d1r88wq8sndssf.cloudfront.net
-- Self-registration is **disabled** on the live instance to prevent spam sign-ups.
-- Use the **test credentials**, provided **on request by email** (kept out of the public repo on purpose, per good practice). When running locally against your own Supabase project, you can re-enable sign-ups and register freely.
 
 ## Architecture — Architettura
 
@@ -218,8 +210,6 @@ pnpm build                                    # output in frontend/dist/
 pnpm preview                                  # serves dist/ locally for a production-like preview
 ```
 
-> 🟢 **Don’t want to set anything up?** Just open the **live demo**: https://d1r88wq8sndssf.cloudfront.net
-
 ## Run it — Option B: local development
 
 For development you can run the local infrastructure in Docker and the app with hot-reload. On macOS/Linux the `Makefile` wraps the commands; on Windows use the `docker compose` / `uv` / `pnpm` equivalents shown.
@@ -266,7 +256,7 @@ Locally, the same checks are wired as **pre-commit hooks** (`make precommit-inst
 
 ## Deployment
 
-Production runs on **AWS Free Tier**:
+The project was deployed on **AWS Free Tier** (the public instance is currently shut down):
 
 - **Backend** on a single **EC2 `t3.micro`** (Ubuntu) running the production Docker Compose stack (api + worker + RabbitMQ + Redis), behind a stable **Elastic IP**. A 2 GB swap file keeps the 1 GB instance comfortable.
 - **Frontend** as a **static build on a private S3 bucket**, served via **CloudFront** (managed HTTPS).
@@ -284,7 +274,6 @@ See [`infra/supabase-prod-setup.sql`](infra/supabase-prod-setup.sql) for the one
 
 ## Troubleshooting
 
-- **`curl /api/v1/health` fails on the live URL** → the EC2 instance is stopped; start it and wait ~1–2 minutes.
 - **`docker compose up` fails: env file not found** → create `.env.production` from `.env.example` first.
 - **Windows: `make: command not found`** → use WSL2, or run the `docker compose` / `uv` / `pnpm` commands shown next to each target.
 - **Supabase + asyncpg errors about prepared statements / IPv6** → use the **Session pooler** URL (port 5432) with the `postgresql+asyncpg://` scheme.
@@ -314,12 +303,6 @@ Flusso tipico:
 - 💬 **Q&A in linguaggio naturale (GraphRAG)** fondato sui tuoi documenti.
 - 🔐 **Isolamento dei dati per utente** garantito dalla Row-Level Security del database.
 - 🌍 **UI multilingua** (i18n) con preferenza sulla lingua di output.
-
-## Demo live e credenziali di prova
-
-- **URL:** https://d1r88wq8sndssf.cloudfront.net
-- La registrazione autonoma è **disabilitata** sull'istanza live per evitare iscrizioni spam.
-- Usa le **credenziali di prova**, fornite **su richiesta via email** (tenute fuori dal repo pubblico per buona pratica). Eseguendo in locale sul tuo progetto Supabase, puoi riabilitare le iscrizioni e registrarti liberamente.
 
 ## Architettura
 
@@ -420,8 +403,6 @@ pnpm build                                    # output in frontend/dist/
 pnpm preview                                  # serve dist/ in locale (anteprima production-like)
 ```
 
-> 🟢 **Non vuoi configurare nulla?** Apri direttamente la **demo live**: https://d1r88wq8sndssf.cloudfront.net
-
 ## Avvio — Opzione B: sviluppo locale
 
 Per lo sviluppo puoi eseguire l'infrastruttura locale in Docker e l'app con hot-reload. Su macOS/Linux il `Makefile` incapsula i comandi; su Windows usa gli equivalenti `docker compose` / `uv` / `pnpm` indicati.
@@ -468,7 +449,7 @@ In locale, gli stessi controlli sono cablati come **hook pre-commit** (`make pre
 
 ## Deploy
 
-La produzione gira su **AWS Free Tier**:
+Il progetto è stato deployato su **AWS Free Tier** (l'istanza pubblica è attualmente spenta):
 
 - **Backend** su una singola **EC2 `t3.micro`** (Ubuntu) che esegue lo stack Docker Compose di produzione (api + worker + RabbitMQ + Redis), dietro un **Elastic IP** stabile. Un file di swap da 2 GB tiene tranquilla l'istanza da 1 GB.
 - **Frontend** come **build statica su un bucket S3 privato**, servita via **CloudFront** (HTTPS gestito).
@@ -486,7 +467,6 @@ Vedi [`infra/supabase-prod-setup.sql`](infra/supabase-prod-setup.sql) per il set
 
 ## Risoluzione problemi
 
-- **`curl /api/v1/health` fallisce sull'URL live** → l'istanza EC2 è spenta; avviala e attendi ~1–2 minuti.
 - **`docker compose up` fallisce: env file non trovato** → crea prima `.env.production` da `.env.example`.
 - **Windows: `make: command not found`** → usa WSL2, oppure i comandi `docker compose` / `uv` / `pnpm` accanto a ogni target.
 - **Errori Supabase + asyncpg su prepared statement / IPv6** → usa l'URL del **Session pooler** (porta 5432) con schema `postgresql+asyncpg://`.
